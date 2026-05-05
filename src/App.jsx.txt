@@ -1,0 +1,1205 @@
+import { useEffect, useState } from "react";
+import { supabase } from "./supabaseClient";
+
+export default function App() {
+  const [logs, setLogs] = useState([]);
+  const [activeTab, setActiveTab] = useState("Today");
+  const [isLoading, setIsLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState("");
+
+  const todayInputDate = new Date().toISOString().split("T")[0];
+
+  const [manualDate, setManualDate] = useState(todayInputDate);
+  const [manualTime, setManualTime] = useState("");
+
+  const [feedDate, setFeedDate] = useState(todayInputDate);
+  const [feedTime, setFeedTime] = useState("");
+
+  const [sleepDate, setSleepDate] = useState(todayInputDate);
+  const [sleepStartTime, setSleepStartTime] = useState("");
+  const [sleepEndTime, setSleepEndTime] = useState("");
+
+  const [feedType, setFeedType] = useState("Nurse");
+  const [activeSide, setActiveSide] = useState(null);
+  const [leftSeconds, setLeftSeconds] = useState(0);
+  const [rightSeconds, setRightSeconds] = useState(0);
+  const [ounces, setOunces] = useState("");
+  const [feedNotes, setFeedNotes] = useState("");
+
+  const [sleepStart, setSleepStart] = useState(null);
+  const [sleepNotes, setSleepNotes] = useState("");
+
+  const [historyFilter, setHistoryFilter] = useState("This Week");
+
+  useEffect(() => {
+    loadLogs();
+  }, []);
+
+  useEffect(() => {
+    let interval = null;
+
+    if (activeSide === "Left") {
+      interval = setInterval(() => setLeftSeconds((prev) => prev + 1), 1000);
+    } else if (activeSide === "Right") {
+      interval = setInterval(() => setRightSeconds((prev) => prev + 1), 1000);
+    }
+
+    return () => clearInterval(interval);
+  }, [activeSide]);
+
+  async function loadLogs() {
+    setIsLoading(true);
+    setErrorMessage("");
+
+    const { data, error } = await supabase
+      .from("baby_logs")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error(error);
+      setErrorMessage("Could not load logs from Supabase.");
+      setLogs([]);
+    } else {
+      setLogs(data || []);
+    }
+
+    setIsLoading(false);
+  }
+
+  function formatTimer(totalSeconds) {
+    const mins = Math.floor(totalSeconds / 60);
+    const secs = totalSeconds % 60;
+    return `${mins}:${secs.toString().padStart(2, "0")}`;
+  }
+
+  function formatMinutes(totalMinutes) {
+    const hours = Math.floor(totalMinutes / 60);
+    const mins = totalMinutes % 60;
+    if (hours > 0) return `${hours}h ${mins}m`;
+    return `${mins}m`;
+  }
+
+  function formatHours(totalMinutes) {
+    return `${(totalMinutes / 60).toFixed(1)} hrs`;
+  }
+
+  function getFormattedDate(dateInput) {
+    return new Date(`${dateInput}T00:00:00`).toLocaleDateString();
+  }
+
+  function getFormattedTime(dateInput, timeInput) {
+    if (!timeInput) {
+      return new Date().toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    }
+
+    return new Date(`${dateInput}T${timeInput}`).toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  }
+
+  async function addLog(type, details = "", customDate = null, customTime = null) {
+    const now = new Date();
+
+    const newLog = {
+      type,
+      details,
+      date: customDate || now.toLocaleDateString(),
+      time:
+        customTime ||
+        now.toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+    };
+
+    const { data, error } = await supabase
+      .from("baby_logs")
+      .insert([newLog])
+      .select()
+      .single();
+
+    if (error) {
+      console.error(error);
+      setErrorMessage("Could not save entry to Supabase.");
+      return;
+    }
+
+    setLogs((prevLogs) => [data, ...prevLogs]);
+    setErrorMessage("");
+  }
+
+  async function deleteLog(id) {
+    const { error } = await supabase.from("baby_logs").delete().eq("id", id);
+
+    if (error) {
+      console.error(error);
+      setErrorMessage("Could not delete entry from Supabase.");
+      return;
+    }
+
+    setLogs((prevLogs) => prevLogs.filter((log) => log.id !== id));
+    setErrorMessage("");
+  }
+
+  async function quickLog(type) {
+    const date = getFormattedDate(manualDate);
+    const time = getFormattedTime(manualDate, manualTime);
+
+    await addLog(type, "", date, time);
+    setManualTime("");
+  }
+
+  async function saveFeed() {
+    let detail = "";
+
+    if (feedType === "Nurse") {
+      if (leftSeconds === 0 && rightSeconds === 0) return;
+
+      const parts = [];
+      if (leftSeconds > 0) parts.push(`Left ${formatTimer(leftSeconds)}`);
+      if (rightSeconds > 0) parts.push(`Right ${formatTimer(rightSeconds)}`);
+
+      detail = `Nurse • ${parts.join(" • ")}`;
+    }
+
+    if (feedType === "Bottle") {
+      if (!ounces.trim()) return;
+      detail = `Bottle • ${ounces} oz`;
+    }
+
+    if (feedNotes.trim()) {
+      detail += ` • ${feedNotes}`;
+    }
+
+    const date = getFormattedDate(feedDate);
+    const time = getFormattedTime(feedDate, feedTime);
+
+    await addLog("Eat", detail, date, time);
+
+    setActiveSide(null);
+    setLeftSeconds(0);
+    setRightSeconds(0);
+    setOunces("");
+    setFeedNotes("");
+    setFeedTime("");
+    setFeedType("Nurse");
+  }
+
+  function resetNursing() {
+    setActiveSide(null);
+    setLeftSeconds(0);
+    setRightSeconds(0);
+  }
+
+  async function clearAllLogs() {
+    const { error } = await supabase
+      .from("baby_logs")
+      .delete()
+      .neq("id", "00000000-0000-0000-0000-000000000000");
+
+    if (error) {
+      console.error(error);
+      setErrorMessage("Could not clear all entries from Supabase.");
+      return;
+    }
+
+    setLogs([]);
+    setErrorMessage("");
+  }
+
+  function startSleep() {
+    if (sleepStart) return;
+    setSleepStart(new Date());
+  }
+
+  async function endSleep() {
+    let start;
+    let end;
+
+    if (sleepStartTime && sleepEndTime) {
+      start = new Date(`${sleepDate}T${sleepStartTime}`);
+      end = new Date(`${sleepDate}T${sleepEndTime}`);
+
+      if (end < start) {
+        end.setDate(end.getDate() + 1);
+      }
+    } else {
+      if (!sleepStart) return;
+      start = sleepStart;
+      end = new Date();
+    }
+
+    const durationMinutes = Math.round((end - start) / 1000 / 60);
+
+    const startTime = start.toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+
+    const endTime = end.toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+
+    let detail = `${startTime} - ${endTime} • ${formatMinutes(durationMinutes)}`;
+
+    if (sleepNotes.trim()) {
+      detail += ` • ${sleepNotes}`;
+    }
+
+    await addLog("Sleep", detail, start.toLocaleDateString(), startTime);
+
+    setSleepStart(null);
+    setSleepNotes("");
+    setSleepStartTime("");
+    setSleepEndTime("");
+  }
+
+  function cancelSleep() {
+    setSleepStart(null);
+    setSleepNotes("");
+  }
+
+  function parseDateString(dateString) {
+    const [month, day, year] = dateString.split("/");
+    return new Date(year, month - 1, day);
+  }
+
+  function formatDateHeader(dateString) {
+    const inputDate = parseDateString(dateString);
+
+    const today = new Date();
+    const yesterday = new Date();
+    yesterday.setDate(today.getDate() - 1);
+
+    const inputOnly = new Date(
+      inputDate.getFullYear(),
+      inputDate.getMonth(),
+      inputDate.getDate()
+    );
+
+    const todayOnly = new Date(
+      today.getFullYear(),
+      today.getMonth(),
+      today.getDate()
+    );
+
+    const yesterdayOnly = new Date(
+      yesterday.getFullYear(),
+      yesterday.getMonth(),
+      yesterday.getDate()
+    );
+
+    if (inputOnly.getTime() === todayOnly.getTime()) return "Today";
+    if (inputOnly.getTime() === yesterdayOnly.getTime()) return "Yesterday";
+
+    return inputDate.toLocaleDateString([], {
+      weekday: "long",
+      month: "long",
+      day: "numeric",
+    });
+  }
+
+  function getStartOfWeek(date) {
+    const d = new Date(date);
+    const day = d.getDay();
+    d.setHours(0, 0, 0, 0);
+    d.setDate(d.getDate() - day);
+    return d;
+  }
+
+  function isThisWeek(dateString) {
+    const logDate = parseDateString(dateString);
+    const today = new Date();
+    const startOfWeek = getStartOfWeek(today);
+    const endOfWeek = new Date(startOfWeek);
+    endOfWeek.setDate(startOfWeek.getDate() + 7);
+
+    return logDate >= startOfWeek && logDate < endOfWeek;
+  }
+
+  function getSleepMinutes(dayLogs) {
+    let total = 0;
+
+    dayLogs.forEach((log) => {
+      if (log.type !== "Sleep" || !log.details) return;
+
+      const match = log.details.match(/(\d+)h\s+(\d+)m|(\d+)m/);
+      if (!match) return;
+
+      if (match[1] && match[2]) {
+        total += Number(match[1]) * 60 + Number(match[2]);
+      } else if (match[3]) {
+        total += Number(match[3]);
+      }
+    });
+
+    return total;
+  }
+
+  function getBottleOunces(dayLogs) {
+    let total = 0;
+
+    dayLogs.forEach((log) => {
+      if (log.type !== "Eat" || !log.details?.includes("Bottle")) return;
+
+      const match = log.details.match(/Bottle • ([0-9.]+) oz/);
+      if (match) total += Number(match[1]);
+    });
+
+    return total;
+  }
+
+  function getDaySummary(dayLogs) {
+    return {
+      feeds: dayLogs.filter((log) => log.type === "Eat").length,
+      wakes: dayLogs.filter((log) => log.type === "Wake").length,
+      plays: dayLogs.filter((log) => log.type === "Play").length,
+      sleeps: dayLogs.filter((log) => log.type === "Sleep").length,
+      sleepMinutes: getSleepMinutes(dayLogs),
+      bottleOunces: getBottleOunces(dayLogs),
+    };
+  }
+
+  function getLast7Days() {
+    const days = [];
+    const today = new Date();
+
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(today);
+      d.setDate(today.getDate() - i);
+      days.push(d.toLocaleDateString());
+    }
+
+    return days;
+  }
+
+  function cardStyle() {
+    return {
+      backgroundColor: "#ffffff",
+      borderRadius: "24px",
+      padding: "20px",
+      boxShadow: "0 10px 30px rgba(0,0,0,0.08)",
+      marginBottom: "18px",
+    };
+  }
+
+  function actionButtonStyle(background = "#ffffff", color = "#111827") {
+    return {
+      padding: "12px 16px",
+      borderRadius: "14px",
+      border: "1px solid #d1d5db",
+      backgroundColor: background,
+      color,
+      fontWeight: "600",
+      fontSize: "15px",
+      cursor: "pointer",
+      minHeight: "48px",
+    };
+  }
+
+  function pillButton(isSelected) {
+    return {
+      padding: "12px 14px",
+      borderRadius: "14px",
+      border: isSelected ? "2px solid #4CAF50" : "1px solid #d1d5db",
+      backgroundColor: isSelected ? "#4CAF50" : "#ffffff",
+      color: isSelected ? "#ffffff" : "#111827",
+      fontWeight: "700",
+      fontSize: "14px",
+      cursor: "pointer",
+      minHeight: "48px",
+    };
+  }
+
+  function inputStyle() {
+    return {
+      width: "100%",
+      padding: "14px",
+      borderRadius: "14px",
+      border: "1px solid #d1d5db",
+      boxSizing: "border-box",
+      fontSize: "16px",
+    };
+  }
+
+  function tabButtonStyle(isSelected) {
+    return {
+      padding: "12px 8px",
+      borderRadius: "14px",
+      border: "none",
+      backgroundColor: isSelected ? "#111827" : "#e5e7eb",
+      color: isSelected ? "#ffffff" : "#111827",
+      fontWeight: "700",
+      fontSize: "13px",
+      cursor: "pointer",
+    };
+  }
+
+  function summaryBoxStyle() {
+    return {
+      backgroundColor: "#f9fafb",
+      border: "1px solid #e5e7eb",
+      borderRadius: "14px",
+      padding: "10px",
+      fontSize: "14px",
+      color: "#374151",
+    };
+  }
+
+  function logCardStyle() {
+    return {
+      border: "1px solid #e5e7eb",
+      borderRadius: "16px",
+      padding: "14px",
+      marginBottom: "10px",
+      backgroundColor: "#fafafa",
+    };
+  }
+
+  function deleteButtonStyle() {
+    return {
+      marginTop: "10px",
+      padding: "8px 12px",
+      borderRadius: "10px",
+      border: "1px solid #fecaca",
+      backgroundColor: "#fee2e2",
+      color: "#991b1b",
+      fontWeight: "700",
+      cursor: "pointer",
+    };
+  }
+
+  function LogCard({ log }) {
+    return (
+      <div style={logCardStyle()}>
+        <strong>
+          {log.type} — {log.time}
+        </strong>
+
+        {log.details && (
+          <div style={{ marginTop: "8px", color: "#374151" }}>
+            {log.details}
+          </div>
+        )}
+
+        <button style={deleteButtonStyle()} onClick={() => deleteLog(log.id)}>
+          Delete Entry
+        </button>
+      </div>
+    );
+  }
+
+  function BarChart({ data, valueKey, labelFormatter }) {
+    const maxValue = Math.max(...data.map((d) => d[valueKey]), 1);
+
+    return (
+      <div
+        style={{
+          border: "1px solid #e5e7eb",
+          borderRadius: "18px",
+          padding: "16px",
+          backgroundColor: "#fafafa",
+          marginBottom: "20px",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "flex-end",
+            gap: "10px",
+            height: "180px",
+          }}
+        >
+          {data.map((day) => {
+            const value = day[valueKey];
+            const barHeight = `${(value / maxValue) * 100}%`;
+
+            return (
+              <div
+                key={`${valueKey}-${day.date}`}
+                style={{
+                  flex: 1,
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "flex-end",
+                  height: "100%",
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: "12px",
+                    fontWeight: "700",
+                    marginBottom: "6px",
+                  }}
+                >
+                  {labelFormatter(value)}
+                </div>
+
+                <div
+                  style={{
+                    width: "100%",
+                    maxWidth: "32px",
+                    height: barHeight,
+                    minHeight: value > 0 ? "8px" : "0px",
+                    backgroundColor: "#111827",
+                    borderRadius: "8px 8px 0 0",
+                  }}
+                />
+
+                <div
+                  style={{
+                    fontSize: "11px",
+                    color: "#6b7280",
+                    marginTop: "8px",
+                    textAlign: "center",
+                  }}
+                >
+                  {day.label === "Today" || day.label === "Yesterday"
+                    ? day.label
+                    : day.label.slice(0, 3)}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  const todayDate = new Date().toLocaleDateString();
+  const todayLogs = logs.filter((log) => log.date === todayDate);
+
+  const filteredLogs =
+    historyFilter === "This Week"
+      ? logs.filter((log) => isThisWeek(log.date))
+      : logs;
+
+  const groupedLogs = filteredLogs.reduce((groups, log) => {
+    if (!groups[log.date]) groups[log.date] = [];
+    groups[log.date].push(log);
+    return groups;
+  }, {});
+
+  const groupedDates = Object.keys(groupedLogs).sort(
+    (a, b) => parseDateString(b) - parseDateString(a)
+  );
+
+  const analyticsData = getLast7Days().map((date) => {
+    const dayLogs = logs.filter((log) => log.date === date);
+    const summary = getDaySummary(dayLogs);
+
+    return {
+      date,
+      label: formatDateHeader(date),
+      feeds: summary.feeds,
+      sleepMinutes: summary.sleepMinutes,
+      bottleOunces: summary.bottleOunces,
+    };
+  });
+
+  const avgFeeds = (
+    analyticsData.reduce((sum, day) => sum + day.feeds, 0) /
+    analyticsData.length
+  ).toFixed(1);
+
+  const avgSleepMinutes = Math.round(
+    analyticsData.reduce((sum, day) => sum + day.sleepMinutes, 0) /
+      analyticsData.length
+  );
+
+  const totalBottleOunces = analyticsData.reduce(
+    (sum, day) => sum + day.bottleOunces,
+    0
+  );
+
+  return (
+    <div
+      style={{
+        minHeight: "100vh",
+        backgroundColor: "#f3f4f6",
+        padding: "20px 14px 90px",
+        fontFamily: "Arial, sans-serif",
+      }}
+    >
+      <div style={{ maxWidth: "430px", margin: "0 auto" }}>
+        <h1
+          style={{
+            textAlign: "center",
+            fontSize: "42px",
+            marginBottom: "18px",
+            color: "#111827",
+          }}
+        >
+          Baby Tracker
+        </h1>
+
+        {errorMessage && (
+          <div
+            style={{
+              backgroundColor: "#fee2e2",
+              color: "#991b1b",
+              border: "1px solid #fecaca",
+              borderRadius: "14px",
+              padding: "12px",
+              marginBottom: "14px",
+              fontWeight: "700",
+            }}
+          >
+            {errorMessage}
+          </div>
+        )}
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr",
+            gap: "8px",
+            marginBottom: "18px",
+            backgroundColor: "#ffffff",
+            padding: "8px",
+            borderRadius: "18px",
+            boxShadow: "0 10px 30px rgba(0,0,0,0.08)",
+          }}
+        >
+          {["Today", "Feed", "Sleep", "History", "Analytics"].map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              style={tabButtonStyle(activeTab === tab)}
+            >
+              {tab}
+            </button>
+          ))}
+        </div>
+
+        {isLoading && (
+          <div style={cardStyle()}>
+            <p style={{ color: "#6b7280", margin: 0 }}>Loading logs...</p>
+          </div>
+        )}
+
+        {!isLoading && activeTab === "Today" && (
+          <>
+            <div style={cardStyle()}>
+              <h2 style={{ marginTop: 0 }}>Quick Log</h2>
+
+              <label style={{ fontWeight: "700" }}>Log Date</label>
+              <input
+                type="date"
+                value={manualDate}
+                onChange={(e) => setManualDate(e.target.value)}
+                style={{ ...inputStyle(), margin: "8px 0 12px" }}
+              />
+
+              <label style={{ fontWeight: "700" }}>Log Time</label>
+              <input
+                type="time"
+                value={manualTime}
+                onChange={(e) => setManualTime(e.target.value)}
+                style={{ ...inputStyle(), margin: "8px 0 16px" }}
+              />
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: "10px",
+                }}
+              >
+                <button
+                  style={actionButtonStyle()}
+                  onClick={() => quickLog("Wake")}
+                >
+                  Wake
+                </button>
+                <button
+                  style={actionButtonStyle()}
+                  onClick={() => quickLog("Play")}
+                >
+                  Play
+                </button>
+              </div>
+
+              <p
+                style={{
+                  color: "#6b7280",
+                  fontSize: "13px",
+                  marginBottom: 0,
+                }}
+              >
+                Leave time blank to use the current time.
+              </p>
+            </div>
+
+            <div style={cardStyle()}>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  marginBottom: "14px",
+                }}
+              >
+                <h2 style={{ margin: 0 }}>Today</h2>
+
+                {logs.length > 0 && (
+                  <button
+                    onClick={clearAllLogs}
+                    style={{
+                      ...actionButtonStyle("#dc2626", "#ffffff"),
+                      minHeight: "40px",
+                      padding: "8px 12px",
+                    }}
+                  >
+                    Clear All
+                  </button>
+                )}
+              </div>
+
+              {todayLogs.length === 0 ? (
+                <p style={{ color: "#6b7280" }}>No logs yet.</p>
+              ) : (
+                todayLogs.map((log) => <LogCard key={log.id} log={log} />)
+              )}
+            </div>
+          </>
+        )}
+
+        {!isLoading && activeTab === "Feed" && (
+          <div style={cardStyle()}>
+            <h2 style={{ marginTop: 0 }}>Feed</h2>
+
+            <label style={{ fontWeight: "700" }}>Feed Date</label>
+            <input
+              type="date"
+              value={feedDate}
+              onChange={(e) => setFeedDate(e.target.value)}
+              style={{ ...inputStyle(), margin: "8px 0 12px" }}
+            />
+
+            <label style={{ fontWeight: "700" }}>Feed Time</label>
+            <input
+              type="time"
+              value={feedTime}
+              onChange={(e) => setFeedTime(e.target.value)}
+              style={{ ...inputStyle(), margin: "8px 0 16px" }}
+            />
+
+            <p style={{ color: "#6b7280", fontSize: "13px", marginTop: 0 }}>
+              Use this to back-log a feed from earlier. Leave time blank to use
+              the current time.
+            </p>
+
+            <div style={{ marginBottom: "18px" }}>
+              <div style={{ fontWeight: "700", marginBottom: "10px" }}>
+                Feed Type
+              </div>
+
+              <div style={{ display: "flex", gap: "10px" }}>
+                <button
+                  style={pillButton(feedType === "Nurse")}
+                  onClick={() => {
+                    setFeedType("Nurse");
+                    setOunces("");
+                  }}
+                >
+                  Nurse
+                </button>
+
+                <button
+                  style={pillButton(feedType === "Bottle")}
+                  onClick={() => {
+                    setFeedType("Bottle");
+                    setActiveSide(null);
+                    setLeftSeconds(0);
+                    setRightSeconds(0);
+                  }}
+                >
+                  Bottle
+                </button>
+              </div>
+            </div>
+
+            {feedType === "Nurse" && (
+              <>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr",
+                    gap: "12px",
+                    marginBottom: "14px",
+                  }}
+                >
+                  {["Left", "Right"].map((side) => {
+                    const seconds =
+                      side === "Left" ? leftSeconds : rightSeconds;
+                    const isActive = activeSide === side;
+
+                    return (
+                      <div
+                        key={side}
+                        style={{
+                          border: isActive
+                            ? "2px solid #4CAF50"
+                            : "1px solid #d1d5db",
+                          borderRadius: "20px",
+                          padding: "16px",
+                          backgroundColor: isActive ? "#f0fdf4" : "#fafafa",
+                        }}
+                      >
+                        <div style={{ fontWeight: "700", marginBottom: "8px" }}>
+                          {side}
+                        </div>
+
+                        <div
+                          style={{
+                            fontSize: "32px",
+                            fontWeight: "700",
+                            marginBottom: "12px",
+                          }}
+                        >
+                          {formatTimer(seconds)}
+                        </div>
+
+                        <button
+                          onClick={() => setActiveSide(side)}
+                          style={{
+                            ...actionButtonStyle(
+                              isActive ? "#4CAF50" : "#ffffff",
+                              isActive ? "#ffffff" : "#111827"
+                            ),
+                            width: "100%",
+                          }}
+                        >
+                          Start {side}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div
+                  style={{
+                    display: "flex",
+                    gap: "10px",
+                    marginBottom: "16px",
+                  }}
+                >
+                  <button
+                    style={{ ...actionButtonStyle(), flex: 1 }}
+                    onClick={() => setActiveSide(null)}
+                  >
+                    Pause
+                  </button>
+
+                  <button
+                    style={{ ...actionButtonStyle(), flex: 1 }}
+                    onClick={resetNursing}
+                  >
+                    Reset
+                  </button>
+                </div>
+              </>
+            )}
+
+            {feedType === "Bottle" && (
+              <div style={{ marginBottom: "16px" }}>
+                <label style={{ fontWeight: "700" }}>Ounces</label>
+                <input
+                  type="number"
+                  step="0.5"
+                  placeholder="e.g. 4"
+                  value={ounces}
+                  onChange={(e) => setOunces(e.target.value)}
+                  style={{ ...inputStyle(), marginTop: "8px" }}
+                />
+              </div>
+            )}
+
+            <div style={{ marginBottom: "16px" }}>
+              <label style={{ fontWeight: "700" }}>Notes</label>
+              <input
+                type="text"
+                placeholder="Optional notes"
+                value={feedNotes}
+                onChange={(e) => setFeedNotes(e.target.value)}
+                style={{ ...inputStyle(), marginTop: "8px" }}
+              />
+            </div>
+
+            <button
+              onClick={saveFeed}
+              style={{
+                ...actionButtonStyle("#111827", "#ffffff"),
+                width: "100%",
+              }}
+            >
+              Save Feed
+            </button>
+          </div>
+        )}
+
+        {!isLoading && activeTab === "Sleep" && (
+          <div style={cardStyle()}>
+            <h2 style={{ marginTop: 0 }}>Sleep</h2>
+
+            <label style={{ fontWeight: "700" }}>Sleep Date</label>
+            <input
+              type="date"
+              value={sleepDate}
+              onChange={(e) => setSleepDate(e.target.value)}
+              style={{ ...inputStyle(), margin: "8px 0 12px" }}
+            />
+
+            <label style={{ fontWeight: "700" }}>Start Time</label>
+            <input
+              type="time"
+              value={sleepStartTime}
+              onChange={(e) => setSleepStartTime(e.target.value)}
+              style={{ ...inputStyle(), margin: "8px 0 12px" }}
+            />
+
+            <label style={{ fontWeight: "700" }}>End Time</label>
+            <input
+              type="time"
+              value={sleepEndTime}
+              onChange={(e) => setSleepEndTime(e.target.value)}
+              style={{ ...inputStyle(), margin: "8px 0 16px" }}
+            />
+
+            <p style={{ color: "#6b7280", fontSize: "13px", marginTop: 0 }}>
+              Use start/end time to back-log sleep. Leave both blank to use
+              live Start Sleep / End Sleep.
+            </p>
+
+            <div style={{ marginBottom: "16px" }}>
+              <label style={{ fontWeight: "700" }}>Notes</label>
+              <input
+                type="text"
+                placeholder="Optional notes"
+                value={sleepNotes}
+                onChange={(e) => setSleepNotes(e.target.value)}
+                style={{ ...inputStyle(), marginTop: "8px" }}
+              />
+            </div>
+
+            {sleepStartTime && sleepEndTime ? (
+              <button
+                onClick={endSleep}
+                style={{
+                  ...actionButtonStyle("#111827", "#ffffff"),
+                  width: "100%",
+                }}
+              >
+                Save Sleep
+              </button>
+            ) : !sleepStart ? (
+              <button
+                onClick={startSleep}
+                style={{
+                  ...actionButtonStyle("#111827", "#ffffff"),
+                  width: "100%",
+                }}
+              >
+                Start Sleep
+              </button>
+            ) : (
+              <>
+                <div
+                  style={{
+                    marginBottom: "14px",
+                    padding: "14px",
+                    borderRadius: "16px",
+                    backgroundColor: "#f9fafb",
+                    border: "1px solid #e5e7eb",
+                    fontWeight: "600",
+                  }}
+                >
+                  Sleeping since{" "}
+                  {sleepStart.toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </div>
+
+                <div style={{ display: "flex", gap: "10px" }}>
+                  <button
+                    onClick={endSleep}
+                    style={{
+                      ...actionButtonStyle("#111827", "#ffffff"),
+                      flex: 1,
+                    }}
+                  >
+                    End Sleep
+                  </button>
+
+                  <button
+                    onClick={cancelSleep}
+                    style={{ ...actionButtonStyle(), flex: 1 }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {!isLoading && activeTab === "History" && (
+          <div style={cardStyle()}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                gap: "10px",
+                alignItems: "center",
+                marginBottom: "14px",
+              }}
+            >
+              <h2 style={{ margin: 0 }}>History</h2>
+
+              <div style={{ display: "flex", gap: "8px" }}>
+                <button
+                  style={pillButton(historyFilter === "This Week")}
+                  onClick={() => setHistoryFilter("This Week")}
+                >
+                  This Week
+                </button>
+
+                <button
+                  style={pillButton(historyFilter === "All Time")}
+                  onClick={() => setHistoryFilter("All Time")}
+                >
+                  All Time
+                </button>
+              </div>
+            </div>
+
+            {groupedDates.length === 0 ? (
+              <p style={{ color: "#6b7280" }}>No logs yet.</p>
+            ) : (
+              groupedDates.map((date) => {
+                const dayLogs = groupedLogs[date];
+                const summary = getDaySummary(dayLogs);
+
+                return (
+                  <div key={date} style={{ marginBottom: "18px" }}>
+                    <h3
+                      style={{
+                        borderBottom: "1px solid #e5e7eb",
+                        paddingBottom: "6px",
+                      }}
+                    >
+                      {formatDateHeader(date)}
+                    </h3>
+
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "1fr 1fr",
+                        gap: "10px",
+                        marginBottom: "12px",
+                      }}
+                    >
+                      <div style={summaryBoxStyle()}>
+                        Feeds: <strong>{summary.feeds}</strong>
+                      </div>
+                      <div style={summaryBoxStyle()}>
+                        Sleep:{" "}
+                        <strong>{formatMinutes(summary.sleepMinutes)}</strong>
+                      </div>
+                      <div style={summaryBoxStyle()}>
+                        Bottle oz: <strong>{summary.bottleOunces}</strong>
+                      </div>
+                      <div style={summaryBoxStyle()}>
+                        Wake: <strong>{summary.wakes}</strong> | Play:{" "}
+                        <strong>{summary.plays}</strong>
+                      </div>
+                    </div>
+
+                    {dayLogs.map((log) => (
+                      <LogCard key={log.id} log={log} />
+                    ))}
+                  </div>
+                );
+              })
+            )}
+          </div>
+        )}
+
+        {!isLoading && activeTab === "Analytics" && (
+          <div style={cardStyle()}>
+            <h2 style={{ marginTop: 0 }}>Analytics</h2>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: "10px",
+                marginBottom: "20px",
+              }}
+            >
+              <div style={summaryBoxStyle()}>
+                Avg feeds/day
+                <br />
+                <strong style={{ fontSize: "24px" }}>{avgFeeds}</strong>
+              </div>
+
+              <div style={summaryBoxStyle()}>
+                Avg sleep/day
+                <br />
+                <strong style={{ fontSize: "24px" }}>
+                  {formatHours(avgSleepMinutes)}
+                </strong>
+              </div>
+
+              <div style={summaryBoxStyle()}>
+                Bottle oz
+                <br />
+                <strong style={{ fontSize: "24px" }}>
+                  {totalBottleOunces}
+                </strong>
+              </div>
+
+              <div style={summaryBoxStyle()}>
+                Days tracked
+                <br />
+                <strong style={{ fontSize: "24px" }}>
+                  {
+                    analyticsData.filter(
+                      (d) =>
+                        d.feeds > 0 ||
+                        d.sleepMinutes > 0 ||
+                        d.bottleOunces > 0
+                    ).length
+                  }
+                </strong>
+              </div>
+            </div>
+
+            <h3>Feeds Per Day</h3>
+            <BarChart
+              data={analyticsData}
+              valueKey="feeds"
+              labelFormatter={(v) => v}
+            />
+
+            <h3>Sleep Per Day</h3>
+            <BarChart
+              data={analyticsData}
+              valueKey="sleepMinutes"
+              labelFormatter={(v) => formatMinutes(v)}
+            />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
