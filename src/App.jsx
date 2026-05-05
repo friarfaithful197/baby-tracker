@@ -1,31 +1,24 @@
-import { supabase } from "./supabaseClient.js";
 import { useEffect, useState } from "react";
+import { supabase } from "./supabaseClient.js";
 
 export default function App() {
-  const [logs, setLogs] = useState(() => {
-    const savedLogs = localStorage.getItem("babyTrackerLogs");
-    const parsedLogs = savedLogs ? JSON.parse(savedLogs) : [];
-
-    return parsedLogs.map((log) => ({
-      ...log,
-      id: log.id || crypto.randomUUID(),
-    }));
-  });
-
-  const [activeTab, setActiveTab] = useState("Today");
-
   const todayInputDate = new Date().toISOString().split("T")[0];
+
+  const [user, setUser] = useState(null);
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authMessage, setAuthMessage] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
+
+  const [logs, setLogs] = useState([]);
+  const [journalEntries, setJournalEntries] = useState([]);
+  const [activeTab, setActiveTab] = useState("Today");
 
   const [manualDate, setManualDate] = useState(todayInputDate);
   const [manualTime, setManualTime] = useState("");
 
   const [feedDate, setFeedDate] = useState(todayInputDate);
   const [feedTime, setFeedTime] = useState("");
-
-  const [sleepDate, setSleepDate] = useState(todayInputDate);
-  const [sleepStartTime, setSleepStartTime] = useState("");
-  const [sleepEndTime, setSleepEndTime] = useState("");
-
   const [feedType, setFeedType] = useState("Nurse");
   const [activeSide, setActiveSide] = useState(null);
   const [leftSeconds, setLeftSeconds] = useState(0);
@@ -33,26 +26,82 @@ export default function App() {
   const [ounces, setOunces] = useState("");
   const [feedNotes, setFeedNotes] = useState("");
 
+  const [sleepDate, setSleepDate] = useState(todayInputDate);
+  const [sleepStartTime, setSleepStartTime] = useState("");
+  const [sleepEndTime, setSleepEndTime] = useState("");
   const [sleepStart, setSleepStart] = useState(null);
   const [sleepNotes, setSleepNotes] = useState("");
+
+  const [journalDate, setJournalDate] = useState(todayInputDate);
+  const [journalTitle, setJournalTitle] = useState("");
+  const [journalMood, setJournalMood] = useState("");
+  const [journalBody, setJournalBody] = useState("");
 
   const [historyFilter, setHistoryFilter] = useState("This Week");
 
   useEffect(() => {
     let interval = null;
-
-    if (activeSide === "Left") {
-      interval = setInterval(() => setLeftSeconds((prev) => prev + 1), 1000);
-    } else if (activeSide === "Right") {
-      interval = setInterval(() => setRightSeconds((prev) => prev + 1), 1000);
-    }
-
+    if (activeSide === "Left") interval = setInterval(() => setLeftSeconds((p) => p + 1), 1000);
+    if (activeSide === "Right") interval = setInterval(() => setRightSeconds((p) => p + 1), 1000);
     return () => clearInterval(interval);
   }, [activeSide]);
 
   useEffect(() => {
-    localStorage.setItem("babyTrackerLogs", JSON.stringify(logs));
-  }, [logs]);
+    async function setupAuth() {
+      const { data } = await supabase.auth.getSession();
+      setUser(data.session?.user || null);
+      if (data.session?.user) await loadAllData();
+      setIsLoading(false);
+    }
+
+    setupAuth();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      setUser(session?.user || null);
+      if (session?.user) await loadAllData();
+      else {
+        setLogs([]);
+        setJournalEntries([]);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  async function loadAllData() {
+    await Promise.all([loadLogs(), loadJournalEntries()]);
+  }
+
+  async function loadLogs() {
+    const { data, error } = await supabase.from("baby_logs").select("*").order("created_at", { ascending: false });
+    if (error) return alert("Could not load baby logs: " + error.message);
+    setLogs(data || []);
+  }
+
+  async function loadJournalEntries() {
+    const { data, error } = await supabase.from("journal_entries").select("*").order("created_at", { ascending: false });
+    if (error) return alert("Could not load journal entries: " + error.message);
+    setJournalEntries(data || []);
+  }
+
+  async function signIn() {
+    setAuthMessage("");
+    const { error } = await supabase.auth.signInWithPassword({ email: authEmail, password: authPassword });
+    if (error) return setAuthMessage(error.message);
+    setAuthEmail("");
+    setAuthPassword("");
+  }
+
+  async function signUp() {
+    setAuthMessage("");
+    const { error } = await supabase.auth.signUp({ email: authEmail, password: authPassword });
+    if (error) return setAuthMessage(error.message);
+    setAuthMessage("Account created. Check your email if Supabase asks you to confirm it, then sign in.");
+  }
+
+  async function signOut() {
+    await supabase.auth.signOut();
+  }
 
   function formatTimer(totalSeconds) {
     const mins = Math.floor(totalSeconds / 60);
@@ -76,81 +125,46 @@ export default function App() {
   }
 
   function getFormattedTime(dateInput, timeInput) {
-    if (!timeInput) {
-      return new Date().toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-    }
-
-    return new Date(`${dateInput}T${timeInput}`).toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+    if (!timeInput) return new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    return new Date(`${dateInput}T${timeInput}`).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   }
 
-  function addLog(type, details = "", customDate = null, customTime = null) {
+  async function addLog(type, details = "", customDate = null, customTime = null) {
     const now = new Date();
-
     const date = customDate || now.toLocaleDateString();
-    const time =
-      customTime ||
-      now.toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-
-    setLogs((prevLogs) => [
-      {
-        id: crypto.randomUUID(),
-        type,
-        time,
-        date,
-        details,
-      },
-      ...prevLogs,
-    ]);
+    const time = customTime || now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    const { data, error } = await supabase.from("baby_logs").insert([{ type, date, time, details }]).select().single();
+    if (error) return alert("Could not save entry: " + error.message);
+    setLogs((prev) => [data, ...prev]);
   }
 
-  function deleteLog(id) {
-    setLogs((prevLogs) => prevLogs.filter((log) => log.id !== id));
+  async function deleteLog(id) {
+    const { error } = await supabase.from("baby_logs").delete().eq("id", id);
+    if (error) return alert("Could not delete entry: " + error.message);
+    setLogs((prev) => prev.filter((log) => log.id !== id));
   }
 
   function quickLog(type) {
-    const date = getFormattedDate(manualDate);
-    const time = getFormattedTime(manualDate, manualTime);
-
-    addLog(type, "", date, time);
+    addLog(type, "", getFormattedDate(manualDate), getFormattedTime(manualDate, manualTime));
     setManualTime("");
   }
 
-  function saveFeed() {
+  async function saveFeed() {
     let detail = "";
-
     if (feedType === "Nurse") {
       if (leftSeconds === 0 && rightSeconds === 0) return;
-
       const parts = [];
       if (leftSeconds > 0) parts.push(`Left ${formatTimer(leftSeconds)}`);
       if (rightSeconds > 0) parts.push(`Right ${formatTimer(rightSeconds)}`);
-
       detail = `Nurse • ${parts.join(" • ")}`;
     }
-
     if (feedType === "Bottle") {
       if (!ounces.trim()) return;
       detail = `Bottle • ${ounces} oz`;
     }
+    if (feedNotes.trim()) detail += ` • ${feedNotes}`;
 
-    if (feedNotes.trim()) {
-      detail += ` • ${feedNotes}`;
-    }
-
-    const date = getFormattedDate(feedDate);
-    const time = getFormattedTime(feedDate, feedTime);
-
-    addLog("Eat", detail, date, time);
-
+    await addLog("Eat", detail, getFormattedDate(feedDate), getFormattedTime(feedDate, feedTime));
     setActiveSide(null);
     setLeftSeconds(0);
     setRightSeconds(0);
@@ -166,27 +180,18 @@ export default function App() {
     setRightSeconds(0);
   }
 
-  function clearAllLogs() {
-    setLogs([]);
-    localStorage.removeItem("babyTrackerLogs");
-  }
-
   function startSleep() {
     if (sleepStart) return;
     setSleepStart(new Date());
   }
 
-  function endSleep() {
+  async function endSleep() {
     let start;
     let end;
-
     if (sleepStartTime && sleepEndTime) {
       start = new Date(`${sleepDate}T${sleepStartTime}`);
       end = new Date(`${sleepDate}T${sleepEndTime}`);
-
-      if (end < start) {
-        end.setDate(end.getDate() + 1);
-      }
+      if (end < start) end.setDate(end.getDate() + 1);
     } else {
       if (!sleepStart) return;
       start = sleepStart;
@@ -194,25 +199,12 @@ export default function App() {
     }
 
     const durationMinutes = Math.round((end - start) / 1000 / 60);
-
-    const startTime = start.toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-
-    const endTime = end.toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-
+    const startTime = start.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    const endTime = end.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     let detail = `${startTime} - ${endTime} • ${formatMinutes(durationMinutes)}`;
+    if (sleepNotes.trim()) detail += ` • ${sleepNotes}`;
 
-    if (sleepNotes.trim()) {
-      detail += ` • ${sleepNotes}`;
-    }
-
-    addLog("Sleep", detail, start.toLocaleDateString(), startTime);
-
+    await addLog("Sleep", detail, start.toLocaleDateString(), startTime);
     setSleepStart(null);
     setSleepNotes("");
     setSleepStartTime("");
@@ -224,6 +216,22 @@ export default function App() {
     setSleepNotes("");
   }
 
+  async function saveJournalEntry() {
+    if (!journalBody.trim()) return;
+    const { data, error } = await supabase.from("journal_entries").insert([{ entry_date: getFormattedDate(journalDate), title: journalTitle.trim(), mood: journalMood.trim(), body: journalBody.trim() }]).select().single();
+    if (error) return alert("Could not save journal entry: " + error.message);
+    setJournalEntries((prev) => [data, ...prev]);
+    setJournalTitle("");
+    setJournalMood("");
+    setJournalBody("");
+  }
+
+  async function deleteJournalEntry(id) {
+    const { error } = await supabase.from("journal_entries").delete().eq("id", id);
+    if (error) return alert("Could not delete journal entry: " + error.message);
+    setJournalEntries((prev) => prev.filter((entry) => entry.id !== id));
+  }
+
   function parseDateString(dateString) {
     const [month, day, year] = dateString.split("/");
     return new Date(year, month - 1, day);
@@ -231,86 +239,51 @@ export default function App() {
 
   function formatDateHeader(dateString) {
     const inputDate = parseDateString(dateString);
-
     const today = new Date();
     const yesterday = new Date();
     yesterday.setDate(today.getDate() - 1);
-
-    const inputOnly = new Date(
-      inputDate.getFullYear(),
-      inputDate.getMonth(),
-      inputDate.getDate()
-    );
-
-    const todayOnly = new Date(
-      today.getFullYear(),
-      today.getMonth(),
-      today.getDate()
-    );
-
-    const yesterdayOnly = new Date(
-      yesterday.getFullYear(),
-      yesterday.getMonth(),
-      yesterday.getDate()
-    );
-
+    const inputOnly = new Date(inputDate.getFullYear(), inputDate.getMonth(), inputDate.getDate());
+    const todayOnly = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const yesterdayOnly = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate());
     if (inputOnly.getTime() === todayOnly.getTime()) return "Today";
     if (inputOnly.getTime() === yesterdayOnly.getTime()) return "Yesterday";
-
-    return inputDate.toLocaleDateString([], {
-      weekday: "long",
-      month: "long",
-      day: "numeric",
-    });
+    return inputDate.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" });
   }
 
   function getStartOfWeek(date) {
     const d = new Date(date);
-    const day = d.getDay();
     d.setHours(0, 0, 0, 0);
-    d.setDate(d.getDate() - day);
+    d.setDate(d.getDate() - d.getDay());
     return d;
   }
 
   function isThisWeek(dateString) {
     const logDate = parseDateString(dateString);
-    const today = new Date();
-    const startOfWeek = getStartOfWeek(today);
+    const startOfWeek = getStartOfWeek(new Date());
     const endOfWeek = new Date(startOfWeek);
     endOfWeek.setDate(startOfWeek.getDate() + 7);
-
     return logDate >= startOfWeek && logDate < endOfWeek;
   }
 
   function getSleepMinutes(dayLogs) {
     let total = 0;
-
     dayLogs.forEach((log) => {
       if (log.type !== "Sleep" || !log.details) return;
-
       const match = log.details.match(/(\d+)h\s+(\d+)m|(\d+)m/);
       if (!match) return;
-
-      if (match[1] && match[2]) {
-        total += Number(match[1]) * 60 + Number(match[2]);
-      } else if (match[3]) {
-        total += Number(match[3]);
-      }
+      if (match[1] && match[2]) total += Number(match[1]) * 60 + Number(match[2]);
+      else if (match[3]) total += Number(match[3]);
     });
-
     return total;
   }
 
   function getBottleOunces(dayLogs) {
     let total = 0;
-
     dayLogs.forEach((log) => {
-      if (log.type !== "Eat" || !log.details.includes("Bottle")) return;
-
+      if (log.type !== "Eat" || !log.details?.includes("Bottle")) return;
       const match = log.details.match(/Bottle • ([0-9.]+) oz/);
       if (match) total += Number(match[1]);
     });
-
     return total;
   }
 
@@ -328,200 +301,47 @@ export default function App() {
   function getLast7Days() {
     const days = [];
     const today = new Date();
-
     for (let i = 6; i >= 0; i--) {
       const d = new Date(today);
       d.setDate(today.getDate() - i);
       days.push(d.toLocaleDateString());
     }
-
     return days;
   }
 
-  function cardStyle() {
-    return {
-      backgroundColor: "#ffffff",
-      borderRadius: "24px",
-      padding: "20px",
-      boxShadow: "0 10px 30px rgba(0,0,0,0.08)",
-      marginBottom: "18px",
-    };
-  }
-
-  function actionButtonStyle(background = "#ffffff", color = "#111827") {
-    return {
-      padding: "12px 16px",
-      borderRadius: "14px",
-      border: "1px solid #d1d5db",
-      backgroundColor: background,
-      color,
-      fontWeight: "600",
-      fontSize: "15px",
-      cursor: "pointer",
-      minHeight: "48px",
-    };
-  }
-
-  function pillButton(isSelected) {
-    return {
-      padding: "12px 14px",
-      borderRadius: "14px",
-      border: isSelected ? "2px solid #4CAF50" : "1px solid #d1d5db",
-      backgroundColor: isSelected ? "#4CAF50" : "#ffffff",
-      color: isSelected ? "#ffffff" : "#111827",
-      fontWeight: "700",
-      fontSize: "14px",
-      cursor: "pointer",
-      minHeight: "48px",
-    };
-  }
-
-  function inputStyle() {
-    return {
-      width: "100%",
-      padding: "14px",
-      borderRadius: "14px",
-      border: "1px solid #d1d5db",
-      boxSizing: "border-box",
-      fontSize: "16px",
-    };
-  }
-
-  function tabButtonStyle(isSelected) {
-    return {
-      padding: "12px 8px",
-      borderRadius: "14px",
-      border: "none",
-      backgroundColor: isSelected ? "#111827" : "#e5e7eb",
-      color: isSelected ? "#ffffff" : "#111827",
-      fontWeight: "700",
-      fontSize: "13px",
-      cursor: "pointer",
-    };
-  }
-
-  function summaryBoxStyle() {
-    return {
-      backgroundColor: "#f9fafb",
-      border: "1px solid #e5e7eb",
-      borderRadius: "14px",
-      padding: "10px",
-      fontSize: "14px",
-      color: "#374151",
-    };
-  }
-
-  function logCardStyle() {
-    return {
-      border: "1px solid #e5e7eb",
-      borderRadius: "16px",
-      padding: "14px",
-      marginBottom: "10px",
-      backgroundColor: "#fafafa",
-    };
-  }
-
-  function deleteButtonStyle() {
-    return {
-      marginTop: "10px",
-      padding: "8px 12px",
-      borderRadius: "10px",
-      border: "1px solid #fecaca",
-      backgroundColor: "#fee2e2",
-      color: "#991b1b",
-      fontWeight: "700",
-      cursor: "pointer",
-    };
-  }
+  function cardStyle() { return { backgroundColor: "#ffffff", borderRadius: "24px", padding: "20px", boxShadow: "0 10px 30px rgba(0,0,0,0.08)", marginBottom: "18px" }; }
+  function actionButtonStyle(background = "#ffffff", color = "#111827") { return { padding: "12px 16px", borderRadius: "14px", border: "1px solid #d1d5db", backgroundColor: background, color, fontWeight: "600", fontSize: "15px", cursor: "pointer", minHeight: "48px" }; }
+  function pillButton(isSelected) { return { padding: "12px 14px", borderRadius: "14px", border: isSelected ? "2px solid #4CAF50" : "1px solid #d1d5db", backgroundColor: isSelected ? "#4CAF50" : "#ffffff", color: isSelected ? "#ffffff" : "#111827", fontWeight: "700", fontSize: "14px", cursor: "pointer", minHeight: "48px" }; }
+  function inputStyle() { return { width: "100%", padding: "14px", borderRadius: "14px", border: "1px solid #d1d5db", boxSizing: "border-box", fontSize: "16px" }; }
+  function textAreaStyle() { return { ...inputStyle(), minHeight: "180px", resize: "vertical", fontFamily: "Arial, sans-serif", lineHeight: 1.5 }; }
+  function tabButtonStyle(isSelected) { return { padding: "12px 8px", borderRadius: "14px", border: "none", backgroundColor: isSelected ? "#111827" : "#e5e7eb", color: isSelected ? "#ffffff" : "#111827", fontWeight: "700", fontSize: "13px", cursor: "pointer" }; }
+  function summaryBoxStyle() { return { backgroundColor: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: "14px", padding: "10px", fontSize: "14px", color: "#374151" }; }
+  function logCardStyle() { return { border: "1px solid #e5e7eb", borderRadius: "16px", padding: "14px", marginBottom: "10px", backgroundColor: "#fafafa" }; }
+  function deleteButtonStyle() { return { marginTop: "10px", padding: "8px 12px", borderRadius: "10px", border: "1px solid #fecaca", backgroundColor: "#fee2e2", color: "#991b1b", fontWeight: "700", cursor: "pointer" }; }
 
   function LogCard({ log }) {
     return (
       <div style={logCardStyle()}>
-        <strong>
-          {log.type} — {log.time}
-        </strong>
-
-        {log.details && (
-          <div style={{ marginTop: "8px", color: "#374151" }}>{log.details}</div>
-        )}
-
-        <button style={deleteButtonStyle()} onClick={() => deleteLog(log.id)}>
-          Delete Entry
-        </button>
+        <strong>{log.type} — {log.time}</strong>
+        {log.details && <div style={{ marginTop: "8px", color: "#374151" }}>{log.details}</div>}
+        <button style={deleteButtonStyle()} onClick={() => deleteLog(log.id)}>Delete Entry</button>
       </div>
     );
   }
 
   function BarChart({ data, valueKey, labelFormatter }) {
     const maxValue = Math.max(...data.map((d) => d[valueKey]), 1);
-
     return (
-      <div
-        style={{
-          border: "1px solid #e5e7eb",
-          borderRadius: "18px",
-          padding: "16px",
-          backgroundColor: "#fafafa",
-          marginBottom: "20px",
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "flex-end",
-            gap: "10px",
-            height: "180px",
-          }}
-        >
+      <div style={{ border: "1px solid #e5e7eb", borderRadius: "18px", padding: "16px", backgroundColor: "#fafafa", marginBottom: "20px" }}>
+        <div style={{ display: "flex", alignItems: "flex-end", gap: "10px", height: "180px" }}>
           {data.map((day) => {
             const value = day[valueKey];
             const barHeight = `${(value / maxValue) * 100}%`;
-
             return (
-              <div
-                key={`${valueKey}-${day.date}`}
-                style={{
-                  flex: 1,
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  justifyContent: "flex-end",
-                  height: "100%",
-                }}
-              >
-                <div
-                  style={{
-                    fontSize: "12px",
-                    fontWeight: "700",
-                    marginBottom: "6px",
-                  }}
-                >
-                  {labelFormatter(value)}
-                </div>
-
-                <div
-                  style={{
-                    width: "100%",
-                    maxWidth: "32px",
-                    height: barHeight,
-                    minHeight: value > 0 ? "8px" : "0px",
-                    backgroundColor: "#111827",
-                    borderRadius: "8px 8px 0 0",
-                  }}
-                />
-
-                <div
-                  style={{
-                    fontSize: "11px",
-                    color: "#6b7280",
-                    marginTop: "8px",
-                    textAlign: "center",
-                  }}
-                >
-                  {day.label === "Today" || day.label === "Yesterday"
-                    ? day.label
-                    : day.label.slice(0, 3)}
-                </div>
+              <div key={`${valueKey}-${day.date}`} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-end", height: "100%" }}>
+                <div style={{ fontSize: "12px", fontWeight: "700", marginBottom: "6px" }}>{labelFormatter(value)}</div>
+                <div style={{ width: "100%", maxWidth: "32px", height: barHeight, minHeight: value > 0 ? "8px" : "0px", backgroundColor: "#111827", borderRadius: "8px 8px 0 0" }} />
+                <div style={{ fontSize: "11px", color: "#6b7280", marginTop: "8px", textAlign: "center" }}>{day.label === "Today" || day.label === "Yesterday" ? day.label : day.label.slice(0, 3)}</div>
               </div>
             );
           })}
@@ -532,571 +352,194 @@ export default function App() {
 
   const todayDate = new Date().toLocaleDateString();
   const todayLogs = logs.filter((log) => log.date === todayDate);
+  const filteredLogs = historyFilter === "This Week" ? logs.filter((log) => isThisWeek(log.date)) : logs;
+  const groupedLogs = filteredLogs.reduce((groups, log) => { if (!groups[log.date]) groups[log.date] = []; groups[log.date].push(log); return groups; }, {});
+  const groupedDates = Object.keys(groupedLogs).sort((a, b) => parseDateString(b) - parseDateString(a));
+  const analyticsData = getLast7Days().map((date) => { const dayLogs = logs.filter((log) => log.date === date); const summary = getDaySummary(dayLogs); return { date, label: formatDateHeader(date), feeds: summary.feeds, sleepMinutes: summary.sleepMinutes, bottleOunces: summary.bottleOunces }; });
+  const avgFeeds = (analyticsData.reduce((sum, day) => sum + day.feeds, 0) / analyticsData.length).toFixed(1);
+  const avgSleepMinutes = Math.round(analyticsData.reduce((sum, day) => sum + day.sleepMinutes, 0) / analyticsData.length);
+  const totalBottleOunces = analyticsData.reduce((sum, day) => sum + day.bottleOunces, 0);
 
-  const filteredLogs =
-    historyFilter === "This Week"
-      ? logs.filter((log) => isThisWeek(log.date))
-      : logs;
+  if (isLoading) return <div style={{ minHeight: "100vh", display: "grid", placeItems: "center" }}>Loading...</div>;
 
-  const groupedLogs = filteredLogs.reduce((groups, log) => {
-    if (!groups[log.date]) groups[log.date] = [];
-    groups[log.date].push(log);
-    return groups;
-  }, {});
-
-  const groupedDates = Object.keys(groupedLogs).sort(
-    (a, b) => parseDateString(b) - parseDateString(a)
-  );
-
-  const analyticsData = getLast7Days().map((date) => {
-    const dayLogs = logs.filter((log) => log.date === date);
-    const summary = getDaySummary(dayLogs);
-
-    return {
-      date,
-      label: formatDateHeader(date),
-      feeds: summary.feeds,
-      sleepMinutes: summary.sleepMinutes,
-      bottleOunces: summary.bottleOunces,
-    };
-  });
-
-  const avgFeeds = (
-    analyticsData.reduce((sum, day) => sum + day.feeds, 0) /
-    analyticsData.length
-  ).toFixed(1);
-
-  const avgSleepMinutes = Math.round(
-    analyticsData.reduce((sum, day) => sum + day.sleepMinutes, 0) /
-      analyticsData.length
-  );
-
-  const totalBottleOunces = analyticsData.reduce(
-    (sum, day) => sum + day.bottleOunces,
-    0
-  );
+  if (!user) {
+    return (
+      <div style={{ minHeight: "100vh", backgroundColor: "#f3f4f6", padding: "20px 14px", fontFamily: "Arial, sans-serif", display: "grid", placeItems: "center" }}>
+        <div style={{ ...cardStyle(), width: "100%", maxWidth: "430px" }}>
+          <h1 style={{ marginTop: 0, textAlign: "center" }}>Baby Tracker</h1>
+          <p style={{ color: "#6b7280" }}>Sign in so your feeding, sleep, and journal entries sync privately across devices.</p>
+          <label style={{ fontWeight: "700" }}>Email</label>
+          <input type="email" value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} style={{ ...inputStyle(), margin: "8px 0 12px" }} />
+          <label style={{ fontWeight: "700" }}>Password</label>
+          <input type="password" value={authPassword} onChange={(e) => setAuthPassword(e.target.value)} style={{ ...inputStyle(), margin: "8px 0 16px" }} />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+            <button onClick={signIn} style={actionButtonStyle("#111827", "#ffffff")}>Sign In</button>
+            <button onClick={signUp} style={actionButtonStyle()}>Create Account</button>
+          </div>
+          {authMessage && <p style={{ color: "#991b1b", fontWeight: "700" }}>{authMessage}</p>}
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        backgroundColor: "#f3f4f6",
-        padding: "20px 14px 90px",
-        fontFamily: "Arial, sans-serif",
-      }}
-    >
+    <div style={{ minHeight: "100vh", backgroundColor: "#f3f4f6", padding: "20px 14px 90px", fontFamily: "Arial, sans-serif" }}>
       <div style={{ maxWidth: "430px", margin: "0 auto" }}>
-        <h1
-          style={{
-            textAlign: "center",
-            fontSize: "42px",
-            marginBottom: "18px",
-            color: "#111827",
-          }}
-        >
-          Baby Tracker
-        </h1>
-
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr",
-            gap: "8px",
-            marginBottom: "18px",
-            backgroundColor: "#ffffff",
-            padding: "8px",
-            borderRadius: "18px",
-            boxShadow: "0 10px 30px rgba(0,0,0,0.08)",
-          }}
-        >
-          {["Today", "Feed", "Sleep", "History", "Analytics"].map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              style={tabButtonStyle(activeTab === tab)}
-            >
-              {tab}
-            </button>
-          ))}
+        <h1 style={{ textAlign: "center", fontSize: "42px", marginBottom: "8px", color: "#111827" }}>Baby Tracker</h1>
+        <div style={{ textAlign: "center", fontSize: "12px", color: "#6b7280", marginBottom: "14px" }}>
+          Signed in as {user.email} <button onClick={signOut} style={{ border: "none", background: "none", color: "#111827", fontWeight: "700" }}>Sign out</button>
         </div>
 
-        {activeTab === "Today" && (
-          <>
-            <div style={cardStyle()}>
-              <h2 style={{ marginTop: 0 }}>Quick Log</h2>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "8px", marginBottom: "18px", backgroundColor: "#ffffff", padding: "8px", borderRadius: "18px", boxShadow: "0 10px 30px rgba(0,0,0,0.08)" }}>
+          {["Today", "Feed", "Sleep", "History", "Analytics", "Journal"].map((tab) => <button key={tab} onClick={() => setActiveTab(tab)} style={tabButtonStyle(activeTab === tab)}>{tab}</button>)}
+        </div>
 
-              <label style={{ fontWeight: "700" }}>Log Date</label>
-              <input
-                type="date"
-                value={manualDate}
-                onChange={(e) => setManualDate(e.target.value)}
-                style={{ ...inputStyle(), margin: "8px 0 12px" }}
-              />
-
-              <label style={{ fontWeight: "700" }}>Log Time</label>
-              <input
-                type="time"
-                value={manualTime}
-                onChange={(e) => setManualTime(e.target.value)}
-                style={{ ...inputStyle(), margin: "8px 0 16px" }}
-              />
-
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gap: "10px",
-                }}
-              >
-                <button style={actionButtonStyle()} onClick={() => quickLog("Wake")}>
-                  Wake
-                </button>
-                <button style={actionButtonStyle()} onClick={() => quickLog("Play")}>
-                  Play
-                </button>
-              </div>
-
-              <p style={{ color: "#6b7280", fontSize: "13px", marginBottom: 0 }}>
-                Leave time blank to use the current time.
-              </p>
-            </div>
-
-            <div style={cardStyle()}>
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  marginBottom: "14px",
-                }}
-              >
-                <h2 style={{ margin: 0 }}>Today</h2>
-
-                {logs.length > 0 && (
-                  <button
-                    onClick={clearAllLogs}
-                    style={{
-                      ...actionButtonStyle("#dc2626", "#ffffff"),
-                      minHeight: "40px",
-                      padding: "8px 12px",
-                    }}
-                  >
-                    Clear All
-                  </button>
-                )}
-              </div>
-
-              {todayLogs.length === 0 ? (
-                <p style={{ color: "#6b7280" }}>No logs yet.</p>
-              ) : (
-                todayLogs.map((log) => <LogCard key={log.id} log={log} />)
-              )}
-            </div>
-          </>
-        )}
-
-        {activeTab === "Feed" && (
+        {activeTab === "Today" && <>
           <div style={cardStyle()}>
-            <h2 style={{ marginTop: 0 }}>Feed</h2>
-
-            <label style={{ fontWeight: "700" }}>Feed Date</label>
-            <input
-              type="date"
-              value={feedDate}
-              onChange={(e) => setFeedDate(e.target.value)}
-              style={{ ...inputStyle(), margin: "8px 0 12px" }}
-            />
-
-            <label style={{ fontWeight: "700" }}>Feed Time</label>
-            <input
-              type="time"
-              value={feedTime}
-              onChange={(e) => setFeedTime(e.target.value)}
-              style={{ ...inputStyle(), margin: "8px 0 16px" }}
-            />
-
-            <p style={{ color: "#6b7280", fontSize: "13px", marginTop: 0 }}>
-              Use this to back-log a feed from earlier. Leave time blank to use the
-              current time.
-            </p>
-
-            <div style={{ marginBottom: "18px" }}>
-              <div style={{ fontWeight: "700", marginBottom: "10px" }}>
-                Feed Type
-              </div>
-
-              <div style={{ display: "flex", gap: "10px" }}>
-                <button
-                  style={pillButton(feedType === "Nurse")}
-                  onClick={() => {
-                    setFeedType("Nurse");
-                    setOunces("");
-                  }}
-                >
-                  Nurse
-                </button>
-
-                <button
-                  style={pillButton(feedType === "Bottle")}
-                  onClick={() => {
-                    setFeedType("Bottle");
-                    setActiveSide(null);
-                    setLeftSeconds(0);
-                    setRightSeconds(0);
-                  }}
-                >
-                  Bottle
-                </button>
-              </div>
+            <h2 style={{ marginTop: 0 }}>Quick Log</h2>
+            <label style={{ fontWeight: "700" }}>Log Date</label>
+            <input type="date" value={manualDate} onChange={(e) => setManualDate(e.target.value)} style={{ ...inputStyle(), margin: "8px 0 12px" }} />
+            <label style={{ fontWeight: "700" }}>Log Time</label>
+            <input type="time" value={manualTime} onChange={(e) => setManualTime(e.target.value)} style={{ ...inputStyle(), margin: "8px 0 16px" }} />
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+              <button style={actionButtonStyle()} onClick={() => quickLog("Wake")}>Wake</button>
+              <button style={actionButtonStyle()} onClick={() => quickLog("Play")}>Play</button>
             </div>
-
-            {feedType === "Nurse" && (
-              <>
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 1fr",
-                    gap: "12px",
-                    marginBottom: "14px",
-                  }}
-                >
-                  {["Left", "Right"].map((side) => {
-                    const seconds = side === "Left" ? leftSeconds : rightSeconds;
-                    const isActive = activeSide === side;
-
-                    return (
-                      <div
-                        key={side}
-                        style={{
-                          border: isActive
-                            ? "2px solid #4CAF50"
-                            : "1px solid #d1d5db",
-                          borderRadius: "20px",
-                          padding: "16px",
-                          backgroundColor: isActive ? "#f0fdf4" : "#fafafa",
-                        }}
-                      >
-                        <div style={{ fontWeight: "700", marginBottom: "8px" }}>
-                          {side}
-                        </div>
-
-                        <div
-                          style={{
-                            fontSize: "32px",
-                            fontWeight: "700",
-                            marginBottom: "12px",
-                          }}
-                        >
-                          {formatTimer(seconds)}
-                        </div>
-
-                        <button
-                          onClick={() => setActiveSide(side)}
-                          style={{
-                            ...actionButtonStyle(
-                              isActive ? "#4CAF50" : "#ffffff",
-                              isActive ? "#ffffff" : "#111827"
-                            ),
-                            width: "100%",
-                          }}
-                        >
-                          Start {side}
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                <div style={{ display: "flex", gap: "10px", marginBottom: "16px" }}>
-                  <button
-                    style={{ ...actionButtonStyle(), flex: 1 }}
-                    onClick={() => setActiveSide(null)}
-                  >
-                    Pause
-                  </button>
-
-                  <button
-                    style={{ ...actionButtonStyle(), flex: 1 }}
-                    onClick={resetNursing}
-                  >
-                    Reset
-                  </button>
-                </div>
-              </>
-            )}
-
-            {feedType === "Bottle" && (
-              <div style={{ marginBottom: "16px" }}>
-                <label style={{ fontWeight: "700" }}>Ounces</label>
-                <input
-                  type="number"
-                  step="0.5"
-                  placeholder="e.g. 4"
-                  value={ounces}
-                  onChange={(e) => setOunces(e.target.value)}
-                  style={{ ...inputStyle(), marginTop: "8px" }}
-                />
-              </div>
-            )}
-
-            <div style={{ marginBottom: "16px" }}>
-              <label style={{ fontWeight: "700" }}>Notes</label>
-              <input
-                type="text"
-                placeholder="Optional notes"
-                value={feedNotes}
-                onChange={(e) => setFeedNotes(e.target.value)}
-                style={{ ...inputStyle(), marginTop: "8px" }}
-              />
-            </div>
-
-            <button
-              onClick={saveFeed}
-              style={{ ...actionButtonStyle("#111827", "#ffffff"), width: "100%" }}
-            >
-              Save Feed
-            </button>
+            <p style={{ color: "#6b7280", fontSize: "13px", marginBottom: 0 }}>Leave time blank to use the current time.</p>
           </div>
-        )}
-
-``````````````````````````````````
-        {activeTab === "Sleep" && (
-         <div style={cardStyle()}>
-           <h2 style={{ marginTop: 0 }}>Sleep</h2>
-
-           <label style={{ fontWeight: "700" }}>Sleep Date</label>
-           <input
-             type="date"
-             value={sleepDate}
-             onChange={(e) => setSleepDate(e.target.value)}
-             style={{ ...inputStyle(), margin: "8px 0 12px" }}
-           />
-
-           <label style={{ fontWeight: "700" }}>Start Time</label>
-           <input
-             type="time"
-             value={sleepStartTime}
-             onChange={(e) => setSleepStartTime(e.target.value)}
-             style={{ ...inputStyle(), margin: "8px 0 12px" }}
-           />
-
-           <label style={{ fontWeight: "700" }}>End Time</label>
-           <input
-             type="time"
-             value={sleepEndTime}
-             onChange={(e) => setSleepEndTime(e.target.value)}
-             style={{ ...inputStyle(), margin: "8px 0 16px" }}
-           />
-
-           <p style={{ color: "#6b7280", fontSize: "13px", marginTop: 0 }}>
-             Use start/end time to back-log sleep. Leave both blank to use live Start Sleep / End Sleep.
-           </p>
-
-           <div style={{ marginBottom: "16px" }}>
-           <label style={{ fontWeight: "700" }}>Notes</label>
-           <input
-           type="text"
-           placeholder="Optional notes"
-           value={sleepNotes}
-           onChange={(e) => setSleepNotes(e.target.value)}
-           style={{ ...inputStyle(), marginTop: "8px" }}
-         />
-       </div>
-
-       {sleepStartTime && sleepEndTime ? (
-         <button
-           onClick={endSleep}
-           style={{ ...actionButtonStyle("#111827", "#ffffff"), width: "100%" }}
-         >
-           Save Sleep
-         </button>
-       ) : !sleepStart ? (
-         <button
-           onClick={startSleep}
-           style={{ ...actionButtonStyle("#111827", "#ffffff"), width: "100%" }}
-         >
-           Start Sleep
-         </button>
-       ) : (
-         <>
-           <div
-             style={{
-               marginBottom: "14px",
-               padding: "14px",
-               borderRadius: "16px",
-               backgroundColor: "#f9fafb",
-               border: "1px solid #e5e7eb",
-               fontWeight: "600",
-             }}
-           >
-             Sleeping since{" "}
-             {sleepStart.toLocaleTimeString([], {
-               hour: "2-digit",
-               minute: "2-digit",
-             })}
-           </div>
-
-           <div style={{ display: "flex", gap: "10px" }}>
-             <button
-               onClick={endSleep}
-               style={{ ...actionButtonStyle("#111827", "#ffffff"), flex: 1 }}
-             >
-               End Sleep
-             </button>
-
-             <button onClick={cancelSleep} style={{ ...actionButtonStyle(), flex: 1 }}>
-               Cancel
-             </button>
-           </div>
-         </>
-       )}
-     </div>
-   )}
-
-                {activeTab === "History" && (
           <div style={cardStyle()}>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                gap: "10px",
-                alignItems: "center",
-                marginBottom: "14px",
-              }}
-            >
-              <h2 style={{ margin: 0 }}>History</h2>
-
-              <div style={{ display: "flex", gap: "8px" }}>
-                <button
-                  style={pillButton(historyFilter === "This Week")}
-                  onClick={() => setHistoryFilter("This Week")}
-                >
-                  This Week
-                </button>
-
-                <button
-                  style={pillButton(historyFilter === "All Time")}
-                  onClick={() => setHistoryFilter("All Time")}
-                >
-                  All Time
-                </button>
-              </div>
-            </div>
-
-            {groupedDates.length === 0 ? (
-              <p style={{ color: "#6b7280" }}>No logs yet.</p>
-            ) : (
-              groupedDates.map((date) => {
-                const dayLogs = groupedLogs[date];
-                const summary = getDaySummary(dayLogs);
-
-                return (
-                  <div key={date} style={{ marginBottom: "18px" }}>
-                    <h3
-                      style={{
-                        borderBottom: "1px solid #e5e7eb",
-                        paddingBottom: "6px",
-                      }}
-                    >
-                      {formatDateHeader(date)}
-                    </h3>
-
-                    <div
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "1fr 1fr",
-                        gap: "10px",
-                        marginBottom: "12px",
-                      }}
-                    >
-                      <div style={summaryBoxStyle()}>
-                        Feeds: <strong>{summary.feeds}</strong>
-                      </div>
-                      <div style={summaryBoxStyle()}>
-                        Sleep: <strong>{formatMinutes(summary.sleepMinutes)}</strong>
-                      </div>
-                      <div style={summaryBoxStyle()}>
-                        Bottle oz: <strong>{summary.bottleOunces}</strong>
-                      </div>
-                      <div style={summaryBoxStyle()}>
-                        Wake: <strong>{summary.wakes}</strong> | Play:{" "}
-                        <strong>{summary.plays}</strong>
-                      </div>
-                    </div>
-
-                    {dayLogs.map((log) => (
-                      <LogCard key={log.id} log={log} />
-                    ))}
-                  </div>
-                );
-              })
-            )}
+            <h2 style={{ marginTop: 0 }}>Today</h2>
+            {todayLogs.length === 0 ? <p style={{ color: "#6b7280" }}>No logs yet.</p> : todayLogs.map((log) => <LogCard key={log.id} log={log} />)}
           </div>
-        )}
+        </>}
 
-        {activeTab === "Analytics" && (
+        {activeTab === "Feed" && <div style={cardStyle()}>
+          <h2 style={{ marginTop: 0 }}>Feed</h2>
+          <label style={{ fontWeight: "700" }}>Feed Date</label>
+          <input type="date" value={feedDate} onChange={(e) => setFeedDate(e.target.value)} style={{ ...inputStyle(), margin: "8px 0 12px" }} />
+          <label style={{ fontWeight: "700" }}>Feed Time</label>
+          <input type="time" value={feedTime} onChange={(e) => setFeedTime(e.target.value)} style={{ ...inputStyle(), margin: "8px 0 16px" }} />
+          <p style={{ color: "#6b7280", fontSize: "13px", marginTop: 0 }}>Use this to back-log a feed from earlier. Leave time blank to use the current time.</p>
+          <div style={{ marginBottom: "18px" }}>
+            <div style={{ fontWeight: "700", marginBottom: "10px" }}>Feed Type</div>
+            <div style={{ display: "flex", gap: "10px" }}>
+              <button style={pillButton(feedType === "Nurse")} onClick={() => { setFeedType("Nurse"); setOunces(""); }}>Nurse</button>
+              <button style={pillButton(feedType === "Bottle")} onClick={() => { setFeedType("Bottle"); setActiveSide(null); setLeftSeconds(0); setRightSeconds(0); }}>Bottle</button>
+            </div>
+          </div>
+          {feedType === "Nurse" && <>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "14px" }}>
+              {["Left", "Right"].map((side) => {
+                const seconds = side === "Left" ? leftSeconds : rightSeconds;
+                const isActive = activeSide === side;
+                return <div key={side} style={{ border: isActive ? "2px solid #4CAF50" : "1px solid #d1d5db", borderRadius: "20px", padding: "16px", backgroundColor: isActive ? "#f0fdf4" : "#fafafa" }}>
+                  <div style={{ fontWeight: "700", marginBottom: "8px" }}>{side}</div>
+                  <div style={{ fontSize: "32px", fontWeight: "700", marginBottom: "12px" }}>{formatTimer(seconds)}</div>
+                  <button onClick={() => setActiveSide(side)} style={{ ...actionButtonStyle(isActive ? "#4CAF50" : "#ffffff", isActive ? "#ffffff" : "#111827"), width: "100%" }}>Start {side}</button>
+                </div>;
+              })}
+            </div>
+            <div style={{ display: "flex", gap: "10px", marginBottom: "16px" }}>
+              <button style={{ ...actionButtonStyle(), flex: 1 }} onClick={() => setActiveSide(null)}>Pause</button>
+              <button style={{ ...actionButtonStyle(), flex: 1 }} onClick={resetNursing}>Reset</button>
+            </div>
+          </>}
+          {feedType === "Bottle" && <div style={{ marginBottom: "16px" }}>
+            <label style={{ fontWeight: "700" }}>Ounces</label>
+            <input type="number" step="0.5" placeholder="e.g. 4" value={ounces} onChange={(e) => setOunces(e.target.value)} style={{ ...inputStyle(), marginTop: "8px" }} />
+          </div>}
+          <div style={{ marginBottom: "16px" }}>
+            <label style={{ fontWeight: "700" }}>Notes</label>
+            <input type="text" placeholder="Optional notes" value={feedNotes} onChange={(e) => setFeedNotes(e.target.value)} style={{ ...inputStyle(), marginTop: "8px" }} />
+          </div>
+          <button onClick={saveFeed} style={{ ...actionButtonStyle("#111827", "#ffffff"), width: "100%" }}>Save Feed</button>
+        </div>}
+
+        {activeTab === "Sleep" && <div style={cardStyle()}>
+          <h2 style={{ marginTop: 0 }}>Sleep</h2>
+          <label style={{ fontWeight: "700" }}>Sleep Date</label>
+          <input type="date" value={sleepDate} onChange={(e) => setSleepDate(e.target.value)} style={{ ...inputStyle(), margin: "8px 0 12px" }} />
+          <label style={{ fontWeight: "700" }}>Start Time</label>
+          <input type="time" value={sleepStartTime} onChange={(e) => setSleepStartTime(e.target.value)} style={{ ...inputStyle(), margin: "8px 0 12px" }} />
+          <label style={{ fontWeight: "700" }}>End Time</label>
+          <input type="time" value={sleepEndTime} onChange={(e) => setSleepEndTime(e.target.value)} style={{ ...inputStyle(), margin: "8px 0 16px" }} />
+          <p style={{ color: "#6b7280", fontSize: "13px", marginTop: 0 }}>Use start/end time to back-log sleep. Leave both blank to use live Start Sleep / End Sleep.</p>
+          <div style={{ marginBottom: "16px" }}>
+            <label style={{ fontWeight: "700" }}>Notes</label>
+            <input type="text" placeholder="Optional notes" value={sleepNotes} onChange={(e) => setSleepNotes(e.target.value)} style={{ ...inputStyle(), marginTop: "8px" }} />
+          </div>
+          {sleepStartTime && sleepEndTime ? <button onClick={endSleep} style={{ ...actionButtonStyle("#111827", "#ffffff"), width: "100%" }}>Save Sleep</button> : !sleepStart ? <button onClick={startSleep} style={{ ...actionButtonStyle("#111827", "#ffffff"), width: "100%" }}>Start Sleep</button> : <>
+            <div style={{ marginBottom: "14px", padding: "14px", borderRadius: "16px", backgroundColor: "#f9fafb", border: "1px solid #e5e7eb", fontWeight: "600" }}>Sleeping since {sleepStart.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div>
+            <div style={{ display: "flex", gap: "10px" }}>
+              <button onClick={endSleep} style={{ ...actionButtonStyle("#111827", "#ffffff"), flex: 1 }}>End Sleep</button>
+              <button onClick={cancelSleep} style={{ ...actionButtonStyle(), flex: 1 }}>Cancel</button>
+            </div>
+          </>}
+        </div>}
+
+        {activeTab === "History" && <div style={cardStyle()}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: "10px", alignItems: "center", marginBottom: "14px" }}>
+            <h2 style={{ margin: 0 }}>History</h2>
+            <div style={{ display: "flex", gap: "8px" }}>
+              <button style={pillButton(historyFilter === "This Week")} onClick={() => setHistoryFilter("This Week")}>This Week</button>
+              <button style={pillButton(historyFilter === "All Time")} onClick={() => setHistoryFilter("All Time")}>All Time</button>
+            </div>
+          </div>
+          {groupedDates.length === 0 ? <p style={{ color: "#6b7280" }}>No logs yet.</p> : groupedDates.map((date) => {
+            const dayLogs = groupedLogs[date];
+            const summary = getDaySummary(dayLogs);
+            return <div key={date} style={{ marginBottom: "18px" }}>
+              <h3 style={{ borderBottom: "1px solid #e5e7eb", paddingBottom: "6px" }}>{formatDateHeader(date)}</h3>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginBottom: "12px" }}>
+                <div style={summaryBoxStyle()}>Feeds: <strong>{summary.feeds}</strong></div>
+                <div style={summaryBoxStyle()}>Sleep: <strong>{formatMinutes(summary.sleepMinutes)}</strong></div>
+                <div style={summaryBoxStyle()}>Bottle oz: <strong>{summary.bottleOunces}</strong></div>
+                <div style={summaryBoxStyle()}>Wake: <strong>{summary.wakes}</strong> | Play: <strong>{summary.plays}</strong></div>
+              </div>
+              {dayLogs.map((log) => <LogCard key={log.id} log={log} />)}
+            </div>;
+          })}
+        </div>}
+
+        {activeTab === "Analytics" && <div style={cardStyle()}>
+          <h2 style={{ marginTop: 0 }}>Analytics</h2>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginBottom: "20px" }}>
+            <div style={summaryBoxStyle()}>Avg feeds/day<br /><strong style={{ fontSize: "24px" }}>{avgFeeds}</strong></div>
+            <div style={summaryBoxStyle()}>Avg sleep/day<br /><strong style={{ fontSize: "24px" }}>{formatHours(avgSleepMinutes)}</strong></div>
+            <div style={summaryBoxStyle()}>Bottle oz<br /><strong style={{ fontSize: "24px" }}>{totalBottleOunces}</strong></div>
+            <div style={summaryBoxStyle()}>Days tracked<br /><strong style={{ fontSize: "24px" }}>{analyticsData.filter((d) => d.feeds > 0 || d.sleepMinutes > 0 || d.bottleOunces > 0).length}</strong></div>
+          </div>
+          <h3>Feeds Per Day</h3>
+          <BarChart data={analyticsData} valueKey="feeds" labelFormatter={(v) => v} />
+          <h3>Sleep Per Day</h3>
+          <BarChart data={analyticsData} valueKey="sleepMinutes" labelFormatter={(v) => formatMinutes(v)} />
+        </div>}
+
+        {activeTab === "Journal" && <>
           <div style={cardStyle()}>
-            <h2 style={{ marginTop: 0 }}>Analytics</h2>
-
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: "10px",
-                marginBottom: "20px",
-              }}
-            >
-              <div style={summaryBoxStyle()}>
-                Avg feeds/day
-                <br />
-                <strong style={{ fontSize: "24px" }}>{avgFeeds}</strong>
-              </div>
-
-              <div style={summaryBoxStyle()}>
-                Avg sleep/day
-                <br />
-                <strong style={{ fontSize: "24px" }}>
-                  {formatHours(avgSleepMinutes)}
-                </strong>
-              </div>
-
-              <div style={summaryBoxStyle()}>
-                Bottle oz
-                <br />
-                <strong style={{ fontSize: "24px" }}>{totalBottleOunces}</strong>
-              </div>
-
-              <div style={summaryBoxStyle()}>
-                Days tracked
-                <br />
-                <strong style={{ fontSize: "24px" }}>
-                  {
-                    analyticsData.filter(
-                      (d) =>
-                        d.feeds > 0 ||
-                        d.sleepMinutes > 0 ||
-                        d.bottleOunces > 0
-                    ).length
-                  }
-                </strong>
-              </div>
-            </div>
-
-            <h3>Feeds Per Day</h3>
-            <BarChart
-              data={analyticsData}
-              valueKey="feeds"
-              labelFormatter={(v) => v}
-            />
-
-            <h3>Sleep Per Day</h3>
-            <BarChart
-              data={analyticsData}
-              valueKey="sleepMinutes"
-              labelFormatter={(v) => formatMinutes(v)}
-            />
+            <h2 style={{ marginTop: 0 }}>Journal</h2>
+            <p style={{ color: "#6b7280", marginTop: 0 }}>A private place to write about postpartum, milestones, hard days, funny moments, and memories.</p>
+            <label style={{ fontWeight: "700" }}>Entry Date</label>
+            <input type="date" value={journalDate} onChange={(e) => setJournalDate(e.target.value)} style={{ ...inputStyle(), margin: "8px 0 12px" }} />
+            <label style={{ fontWeight: "700" }}>Title</label>
+            <input type="text" placeholder="e.g. First long night" value={journalTitle} onChange={(e) => setJournalTitle(e.target.value)} style={{ ...inputStyle(), margin: "8px 0 12px" }} />
+            <label style={{ fontWeight: "700" }}>Mood</label>
+            <input type="text" placeholder="e.g. tired, grateful, overwhelmed" value={journalMood} onChange={(e) => setJournalMood(e.target.value)} style={{ ...inputStyle(), margin: "8px 0 12px" }} />
+            <label style={{ fontWeight: "700" }}>Entry</label>
+            <textarea placeholder="Write anything you want to remember..." value={journalBody} onChange={(e) => setJournalBody(e.target.value)} style={{ ...textAreaStyle(), margin: "8px 0 16px" }} />
+            <button onClick={saveJournalEntry} style={{ ...actionButtonStyle("#111827", "#ffffff"), width: "100%" }}>Save Journal Entry</button>
           </div>
-        )}
+          <div style={cardStyle()}>
+            <h2 style={{ marginTop: 0 }}>Previous Entries</h2>
+            {journalEntries.length === 0 ? <p style={{ color: "#6b7280" }}>No journal entries yet.</p> : journalEntries.map((entry) => <div key={entry.id} style={logCardStyle()}>
+              <div style={{ fontSize: "12px", color: "#6b7280", marginBottom: "6px" }}>{entry.entry_date}</div>
+              {entry.title && <strong>{entry.title}</strong>}
+              {entry.mood && <div style={{ marginTop: "6px", color: "#4CAF50", fontWeight: "700" }}>Mood: {entry.mood}</div>}
+              <div style={{ marginTop: "10px", color: "#374151", whiteSpace: "pre-wrap" }}>{entry.body}</div>
+              <button style={deleteButtonStyle()} onClick={() => deleteJournalEntry(entry.id)}>Delete Entry</button>
+            </div>)}
+          </div>
+        </>}
       </div>
     </div>
   );
