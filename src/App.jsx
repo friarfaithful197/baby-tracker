@@ -852,7 +852,7 @@ function CenteredMessage({ message }) {
 function pageStyle() {
   return {
     minHeight: "100vh",
-    background: "linear-gradient(135deg, #ffe4ec 0%, #fce7f3 35%, #e0f2fe 100%)",
+    background: "linear-gradient(135deg, #e4faff 0%, #ebadd0 35%, #e0f2fe 100%)",
     padding: "20px 14px 90px",
     fontFamily: "Arial, sans-serif",
   };
