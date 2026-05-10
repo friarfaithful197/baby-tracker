@@ -32,6 +32,8 @@ const TABS = [
 ];
 
 export default function App() {
+  const [checklistInput, setChecklistInput] = useState("");
+  const [checklistItems, setChecklistItems] = useState([]);
   const [session, setSession] = useState(null);
   const [authMode, setAuthMode] = useState("signIn");
   const [email, setEmail] = useState("");
@@ -174,6 +176,17 @@ export default function App() {
     setLogs([]);
     setJournalEntries([]);
     setAppItems([]);
+  }
+
+  function addChecklistItem() {
+    if (!checklistInput.trim()) return;
+
+    setChecklistItems((prev) => [
+      ...prev,
+      { text: checklistInput, done: false }
+    ]);
+
+    setChecklistInput("");
   }
 
   function formatTimer(totalSeconds) {
@@ -711,7 +724,63 @@ export default function App() {
           </div>
         )}
 
-        {activeTab === "Checklist" && <ListTab title="Checklist" category="checklist" placeholder="Add travel item, task, or reminder..." />}
+        {activeTab === "Checklist" && (
+          <div style={cardStyle()}>
+            <h2>Checklist</h2>
+
+            <input
+              type="text"
+              placeholder="Add item..."
+              value={checklistInput}
+              onChange={(e) => setChecklistInput(e.target.value)}
+              style={{ ...inputStyle(), marginBottom: "10px" }}
+            />
+
+            <button
+              onClick={addChecklistItem}
+              style={{ ...actionButtonStyle("#111827", "#ffffff"), width: "100%" }}
+            >
+              Add Item
+            </button>
+
+            <div style={{ marginTop: "15px" }}>
+              {checklistItems.map((item, i) => (
+                <div
+                  key={i}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "10px",
+                    marginBottom: "8px"
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={item.done}
+                    onChange={() => {
+                      const updated = [...checklistItems];
+                      updated[i].done = !updated[i].done;
+                      setChecklistItems(updated);
+                    }}
+                  />
+
+                  <span style={{ textDecoration: item.done ? "line-through" : "none" }}>
+                    {item.text}
+                  </span>
+
+                  <button
+                    onClick={() =>
+                      setChecklistItems(checklistItems.filter((_, idx) => idx !== i))
+                    }
+                    style={{ marginLeft: "auto" }}
+                  >
+                    ❌
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
         {activeTab === "Questions" && <ListTab title="Doctor Questions" category="questions" placeholder="Add a question for the next appointment..." />}
         {activeTab === "Milestones" && <ListTab title="Milestones" category="milestones" placeholder="Add a milestone, first, or memory..." />}
         {activeTab === "Work" && <ListTab title="Work / Pumping Prep" category="work" placeholder="Add pump parts, bottles, charger, bags, snacks..." />}
@@ -843,7 +912,7 @@ function CenteredMessage({ message }) {
 }
 
 function pageStyle() {
-  return { minHeight: "100vh", backgroundColor: "#f3f4f6", padding: "20px 14px 90px", fontFamily: "Arial, sans-serif" };
+  return { minHeight: "100vh", backgroundColor: "linear-gradient(135deg, #ffe4ec, #e0f2fe)", padding: "20px 14px 90px", fontFamily: "Arial, sans-serif" };
 }
 
 function titleStyle() {
