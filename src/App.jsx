@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "./supabaseClient.js";
 
 const TODAY_INPUT_DATE = new Date().toISOString().split("T")[0];
@@ -353,8 +353,8 @@ export default function App() {
     setJournalEntries((prev) => prev.filter((entry) => entry.id !== id));
   }
 
-  async function addAppItem(category) {
-    const text = newItemText[category]?.trim();
+  async function addAppItem(category, textOverride = null) {
+    const text = textOverride?.trim();
     if (!text) return;
 
     const { data, error } = await supabase
@@ -370,7 +370,6 @@ export default function App() {
     }
 
     setAppItems((prev) => [data, ...prev]);
-    setNewItemText((prev) => ({ ...prev, [category]: "" }));
   }
 
   async function toggleAppItem(item) {
@@ -860,38 +859,46 @@ function ListTab({
   category,
   placeholder,
   appItems,
-  newItemText,
-  setNewItemText,
   addAppItem,
   toggleAppItem,
   deleteAppItem,
+  cardStyle,
+  inputStyle,
+  actionButtonStyle,
+  listItemStyle,
+  smallDeleteButtonStyle,
 }) {
+  const inputRef = useRef(null);
   const items = appItems.filter((item) => item.category === category);
-  const value = newItemText[category] || "";
+
+  async function handleAdd() {
+    const text = inputRef.current?.value?.trim();
+    if (!text) return;
+
+    await addAppItem(category, text);
+    inputRef.current.value = "";
+  }
 
   return (
     <div style={cardStyle()}>
       <h2 style={{ marginTop: 0 }}>{title}</h2>
+
       <div style={{ display: "flex", gap: "10px", marginBottom: "16px" }}>
         <input
+          ref={inputRef}
           type="text"
-          value={value}
-          onChange={(e) =>
-            setNewItemText((prev) => ({ ...prev, [category]: e.target.value }))
-          }
-          onKeyDown={(e) => {
-            if (e.key === "Enter") addAppItem(category);
-          }}
           placeholder={placeholder}
           style={inputStyle()}
         />
+
         <button
-          onClick={() => addAppItem(category)}
+          onClick={handleAdd}
           style={actionButtonStyle("#2563eb", "#ffffff")}
         >
           Add
         </button>
       </div>
+
       {items.length === 0 ? (
         <p style={{ color: "#6b7280" }}>No items yet.</p>
       ) : (
@@ -902,16 +909,21 @@ function ListTab({
               checked={item.is_done}
               onChange={() => toggleAppItem(item)}
             />
+
             <div
               style={{
                 flex: 1,
                 textDecoration: item.is_done ? "line-through" : "none",
-                color: item.is_done ? "#6b7280" : "#1e3a8a",
+                color: item.is_done ? "#6b7280" : "#111827",
               }}
             >
               {item.text}
             </div>
-            <button onClick={() => deleteAppItem(item.id)} style={smallDeleteButtonStyle()}>
+
+            <button
+              onClick={() => deleteAppItem(item.id)}
+              style={smallDeleteButtonStyle()}
+            >
               Delete
             </button>
           </div>
