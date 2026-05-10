@@ -871,11 +871,11 @@ function tabContainerStyle() {
 }
 
 function tabButtonStyle(isSelected) {
-  return { padding: "12px 8px", borderRadius: "14px", border: "none", backgroundColor: isSelected ? "#111827" : "#e5e7eb", color: isSelected ? "#ffffff" : "#111827", fontWeight: "700", fontSize: "13px", cursor: "pointer" };
+  return { padding: "12px 8px", borderRadius: "14px", border: "none", backgroundColor: isSelected ? "#2563eb" : "#dbeafe", color: isSelected ? "#ffffff" : "#1e3a8a", fontWeight: "700", fontSize: "13px", cursor: "pointer" };
 }
 
-function actionButtonStyle(background = "#ffffff", color = "#111827") {
-  return { padding: "12px 16px", borderRadius: "14px", border: "1px solid #d1d5db", backgroundColor: background, color, fontWeight: "600", fontSize: "15px", cursor: "pointer", minHeight: "48px" };
+function actionButtonStyle(background = "#eff6ff", color = "#1e3a8a") {
+  return { padding: "12px 16px", borderRadius: "14px", border: "1px solid #bfdbfe", backgroundColor: background, color, fontWeight: "600", fontSize: "15px", cursor: "pointer", minHeight: "48px" };
 }
 
 function pillButton(isSelected) {
