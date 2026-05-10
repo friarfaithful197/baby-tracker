@@ -176,7 +176,6 @@ export default function App() {
     setAppItems([]);
   }
 
-
   function formatTimer(totalSeconds) {
     const mins = Math.floor(totalSeconds / 60);
     const secs = totalSeconds % 60;
@@ -540,7 +539,7 @@ export default function App() {
                 style={inputStyle()}
               />
               {authMessage && <p style={{ color: "#991b1b" }}>{authMessage}</p>}
-              <button type="submit" style={{ ...actionButtonStyle("#111827", "#ffffff"), width: "100%", marginTop: "16px" }}>
+              <button type="submit" style={{ ...actionButtonStyle("#2563eb", "#ffffff"), width: "100%", marginTop: "16px" }}>
                 {authMode === "signIn" ? "Sign In" : "Create Account"}
               </button>
             </form>
@@ -584,7 +583,7 @@ export default function App() {
             <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
               {BASE_SCHEDULE.map((item, index) => (
                 <div key={index} style={scheduleItemStyle()}>
-                  <div style={{ fontWeight: "800", color: "#111827", minWidth: "58px" }}>{item.time || "—"}</div>
+                  <div style={{ fontWeight: "800", color: "#1e3a8a", minWidth: "58px" }}>{item.time || "—"}</div>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontWeight: "700" }}>{item.task}</div>
                     {item.note && <div style={{ color: "#6b7280", fontSize: "13px" }}>{item.note}</div>}
@@ -640,7 +639,7 @@ export default function App() {
                       <div key={side} style={nursingCardStyle(isActive)}>
                         <div style={{ fontWeight: "700", marginBottom: "8px" }}>{side}</div>
                         <div style={{ fontSize: "32px", fontWeight: "700", marginBottom: "12px" }}>{formatTimer(seconds)}</div>
-                        <button onClick={() => setActiveSide(side)} style={{ ...actionButtonStyle(isActive ? "#4CAF50" : "#ffffff", isActive ? "#ffffff" : "#111827"), width: "100%" }}>Start {side}</button>
+                        <button onClick={() => setActiveSide(side)} style={{ ...actionButtonStyle(isActive ? "#2563eb" : "#eff6ff", isActive ? "#ffffff" : "#1e3a8a"), width: "100%" }}>Start {side}</button>
                       </div>
                     );
                   })}
@@ -661,7 +660,7 @@ export default function App() {
               <label style={labelStyle()}>Notes</label>
               <input type="text" placeholder="Optional notes" value={feedNotes} onChange={(e) => setFeedNotes(e.target.value)} style={{ ...inputStyle(), marginTop: "8px" }} />
             </div>
-            <button onClick={saveFeed} style={{ ...actionButtonStyle("#111827", "#ffffff"), width: "100%" }}>Save Feed</button>
+            <button onClick={saveFeed} style={{ ...actionButtonStyle("#2563eb", "#ffffff"), width: "100%" }}>Save Feed</button>
           </div>
         )}
 
@@ -680,14 +679,14 @@ export default function App() {
               <input type="text" placeholder="Optional notes" value={sleepNotes} onChange={(e) => setSleepNotes(e.target.value)} style={{ ...inputStyle(), marginTop: "8px" }} />
             </div>
             {sleepStartTime && sleepEndTime ? (
-              <button onClick={endSleep} style={{ ...actionButtonStyle("#111827", "#ffffff"), width: "100%" }}>Save Sleep</button>
+              <button onClick={endSleep} style={{ ...actionButtonStyle("#2563eb", "#ffffff"), width: "100%" }}>Save Sleep</button>
             ) : !sleepStart ? (
-              <button onClick={startSleep} style={{ ...actionButtonStyle("#111827", "#ffffff"), width: "100%" }}>Start Sleep</button>
+              <button onClick={startSleep} style={{ ...actionButtonStyle("#2563eb", "#ffffff"), width: "100%" }}>Start Sleep</button>
             ) : (
               <>
                 <div style={liveSleepStyle()}>Sleeping since {sleepStart.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div>
                 <div style={{ display: "flex", gap: "10px" }}>
-                  <button onClick={endSleep} style={{ ...actionButtonStyle("#111827", "#ffffff"), flex: 1 }}>End Sleep</button>
+                  <button onClick={endSleep} style={{ ...actionButtonStyle("#2563eb", "#ffffff"), flex: 1 }}>End Sleep</button>
                   <button onClick={cancelSleep} style={{ ...actionButtonStyle(), flex: 1 }}>Cancel</button>
                 </div>
               </>
@@ -706,7 +705,7 @@ export default function App() {
             <input type="text" value={journalMood} onChange={(e) => setJournalMood(e.target.value)} placeholder="e.g. tired, grateful, overwhelmed" style={{ ...inputStyle(), margin: "8px 0 12px" }} />
             <label style={labelStyle()}>Entry</label>
             <textarea value={journalBody} onChange={(e) => setJournalBody(e.target.value)} placeholder="Write about postpartum, baby milestones, hard days, gratitude, or anything else..." rows={6} style={{ ...inputStyle(), margin: "8px 0 16px", resize: "vertical" }} />
-            <button onClick={saveJournalEntry} style={{ ...actionButtonStyle("#111827", "#ffffff"), width: "100%" }}>Save Journal Entry</button>
+            <button onClick={saveJournalEntry} style={{ ...actionButtonStyle("#2563eb", "#ffffff"), width: "100%" }}>Save Journal Entry</button>
             <h3>Past Entries</h3>
             {journalEntries.length === 0 ? <p style={{ color: "#6b7280" }}>No journal entries yet.</p> : journalEntries.map((entry) => <JournalCard key={entry.id} entry={entry} />)}
           </div>
@@ -716,12 +715,54 @@ export default function App() {
           <ListTab
             title="Checklist"
             category="checklist"
-            placeholder="Add a travel item, packing task, or reminder..."
+            placeholder="Add a checklist item..."
+            appItems={appItems}
+            newItemText={newItemText}
+            setNewItemText={setNewItemText}
+            addAppItem={addAppItem}
+            toggleAppItem={toggleAppItem}
+            deleteAppItem={deleteAppItem}
           />
         )}
-        {activeTab === "Questions" && <ListTab title="Doctor Questions" category="questions" placeholder="Add a question for the next appointment..." />}
-        {activeTab === "Milestones" && <ListTab title="Milestones" category="milestones" placeholder="Add a milestone, first, or memory..." />}
-        {activeTab === "Work" && <ListTab title="Work / Pumping Prep" category="work" placeholder="Add pump parts, bottles, charger, bags, snacks..." />}
+        {activeTab === "Questions" && (
+          <ListTab
+            title="Doctor Questions"
+            category="questions"
+            placeholder="Add a question for the next appointment..."
+            appItems={appItems}
+            newItemText={newItemText}
+            setNewItemText={setNewItemText}
+            addAppItem={addAppItem}
+            toggleAppItem={toggleAppItem}
+            deleteAppItem={deleteAppItem}
+          />
+        )}
+        {activeTab === "Milestones" && (
+          <ListTab
+            title="Milestones"
+            category="milestones"
+            placeholder="Add a milestone, first, or memory..."
+            appItems={appItems}
+            newItemText={newItemText}
+            setNewItemText={setNewItemText}
+            addAppItem={addAppItem}
+            toggleAppItem={toggleAppItem}
+            deleteAppItem={deleteAppItem}
+          />
+        )}
+        {activeTab === "Work" && (
+          <ListTab
+            title="Work / Pumping Prep"
+            category="work"
+            placeholder="Add pump parts, bottles, charger, bags, snacks..."
+            appItems={appItems}
+            newItemText={newItemText}
+            setNewItemText={setNewItemText}
+            addAppItem={addAppItem}
+            toggleAppItem={toggleAppItem}
+            deleteAppItem={deleteAppItem}
+          />
+        )}
 
         {activeTab === "History" && (
           <div style={cardStyle()}>
@@ -791,32 +832,6 @@ export default function App() {
     );
   }
 
-  function ListTab({ title, category, placeholder }) {
-    const items = appItems.filter((item) => item.category === category);
-    return (
-      <div style={cardStyle()}>
-        <h2 style={{ marginTop: 0 }}>{title}</h2>
-        <div style={{ display: "flex", gap: "10px", marginBottom: "16px" }}>
-          <input
-            type="text"
-            value={newItemText[category] || ""}
-            onChange={(e) => setNewItemText((prev) => ({ ...prev, [category]: e.target.value }))}
-            placeholder={placeholder}
-            style={inputStyle()}
-          />
-          <button onClick={() => addAppItem(category)} style={actionButtonStyle("#111827", "#ffffff")}>Add</button>
-        </div>
-        {items.length === 0 ? <p style={{ color: "#6b7280" }}>No items yet.</p> : items.map((item) => (
-          <div key={item.id} style={listItemStyle(item.is_done)}>
-            <input type="checkbox" checked={item.is_done} onChange={() => toggleAppItem(item)} />
-            <div style={{ flex: 1, textDecoration: item.is_done ? "line-through" : "none", color: item.is_done ? "#6b7280" : "#111827" }}>{item.text}</div>
-            <button onClick={() => deleteAppItem(item.id)} style={smallDeleteButtonStyle()}>Delete</button>
-          </div>
-        ))}
-      </div>
-    );
-  }
-
   function BarChart({ data, valueKey, labelFormatter }) {
     const maxValue = Math.max(...data.map((d) => d[valueKey]), 1);
     return (
@@ -828,7 +843,7 @@ export default function App() {
             return (
               <div key={`${valueKey}-${day.date}`} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-end", height: "100%" }}>
                 <div style={{ fontSize: "12px", fontWeight: "700", marginBottom: "6px" }}>{labelFormatter(value)}</div>
-                <div style={{ width: "100%", maxWidth: "32px", height: barHeight, minHeight: value > 0 ? "8px" : "0px", backgroundColor: "#111827", borderRadius: "8px 8px 0 0" }} />
+                <div style={{ width: "100%", maxWidth: "32px", height: barHeight, minHeight: value > 0 ? "8px" : "0px", backgroundColor: "#2563eb", borderRadius: "8px 8px 0 0" }} />
                 <div style={{ fontSize: "11px", color: "#6b7280", marginTop: "8px", textAlign: "center" }}>{day.label === "Today" || day.label === "Yesterday" ? day.label : day.label.slice(0, 3)}</div>
               </div>
             );
@@ -837,6 +852,73 @@ export default function App() {
       </div>
     );
   }
+}
+
+
+function ListTab({
+  title,
+  category,
+  placeholder,
+  appItems,
+  newItemText,
+  setNewItemText,
+  addAppItem,
+  toggleAppItem,
+  deleteAppItem,
+}) {
+  const items = appItems.filter((item) => item.category === category);
+  const value = newItemText[category] || "";
+
+  return (
+    <div style={cardStyle()}>
+      <h2 style={{ marginTop: 0 }}>{title}</h2>
+      <div style={{ display: "flex", gap: "10px", marginBottom: "16px" }}>
+        <input
+          type="text"
+          value={value}
+          onChange={(e) =>
+            setNewItemText((prev) => ({ ...prev, [category]: e.target.value }))
+          }
+          onKeyDown={(e) => {
+            if (e.key === "Enter") addAppItem(category);
+          }}
+          placeholder={placeholder}
+          style={inputStyle()}
+        />
+        <button
+          onClick={() => addAppItem(category)}
+          style={actionButtonStyle("#2563eb", "#ffffff")}
+        >
+          Add
+        </button>
+      </div>
+      {items.length === 0 ? (
+        <p style={{ color: "#6b7280" }}>No items yet.</p>
+      ) : (
+        items.map((item) => (
+          <div key={item.id} style={listItemStyle(item.is_done)}>
+            <input
+              type="checkbox"
+              checked={item.is_done}
+              onChange={() => toggleAppItem(item)}
+            />
+            <div
+              style={{
+                flex: 1,
+                textDecoration: item.is_done ? "line-through" : "none",
+                color: item.is_done ? "#6b7280" : "#1e3a8a",
+              }}
+            >
+              {item.text}
+            </div>
+            <button onClick={() => deleteAppItem(item.id)} style={smallDeleteButtonStyle()}>
+              Delete
+            </button>
+          </div>
+        ))
+      )}
+    </div>
+  );
 }
 
 function CenteredMessage({ message }) {
@@ -850,20 +932,15 @@ function CenteredMessage({ message }) {
 }
 
 function pageStyle() {
-  return {
-    minHeight: "100vh",
-    background: "linear-gradient(135deg, #e4faff 0%, #ebadd0 35%, #e0f2fe 100%)",
-    padding: "20px 14px 90px",
-    fontFamily: "Arial, sans-serif",
-  };
+  return { minHeight: "100vh", background: "linear-gradient(135deg, #ffe4ec, #e0f2fe)", padding: "20px 14px 90px", fontFamily: "Arial, sans-serif" };
 }
 
 function titleStyle() {
-  return { textAlign: "center", fontSize: "36px", marginBottom: "18px", color: "#111827" };
+  return { textAlign: "center", fontSize: "36px", marginBottom: "18px", color: "#1e3a8a" };
 }
 
 function cardStyle() {
-  return { backgroundColor: "#ffffff", borderRadius: "24px", padding: "20px", boxShadow: "0 10px 30px rgba(0,0,0,0.08)", marginBottom: "18px" };
+  return { backgroundColor: "#f8fbff", borderRadius: "24px", padding: "20px", boxShadow: "0 10px 30px rgba(0,0,0,0.08)", marginBottom: "18px" };
 }
 
 function tabContainerStyle() {
@@ -879,7 +956,7 @@ function actionButtonStyle(background = "#eff6ff", color = "#1e3a8a") {
 }
 
 function pillButton(isSelected) {
-  return { padding: "12px 14px", borderRadius: "14px", border: isSelected ? "2px solid #4CAF50" : "1px solid #d1d5db", backgroundColor: isSelected ? "#4CAF50" : "#ffffff", color: isSelected ? "#ffffff" : "#111827", fontWeight: "700", fontSize: "14px", cursor: "pointer", minHeight: "48px" };
+  return { padding: "12px 14px", borderRadius: "14px", border: isSelected ? "2px solid #2563eb" : "1px solid #bfdbfe", backgroundColor: isSelected ? "#2563eb" : "#eff6ff", color: isSelected ? "#ffffff" : "#1e3a8a", fontWeight: "700", fontSize: "14px", cursor: "pointer", minHeight: "48px" };
 }
 
 function inputStyle() {
@@ -891,7 +968,7 @@ function labelStyle() {
 }
 
 function summaryBoxStyle() {
-  return { backgroundColor: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: "14px", padding: "10px", fontSize: "14px", color: "#374151" };
+  return { backgroundColor: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: "14px", padding: "10px", fontSize: "14px", color: "#1e3a8a" };
 }
 
 function logCardStyle() {
